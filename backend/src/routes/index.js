@@ -16,6 +16,29 @@ const settingsRoutes = require('./settings.routes');
 const crmRoutes = require('./crm.routes');
 const uploadRoutes = require('./upload.routes');
 
+// API Root Index Endpoint
+router.get('/', (req, res) => {
+  res.status(200).json({
+    success: true,
+    message: 'Shree Dhaneshkumar Jasvantlal Maheta High School ERP API Gateway',
+    version: '1.0.0',
+    status: 'ONLINE',
+    endpoints: {
+      auth: '/api/auth',
+      dashboard: '/api/dashboard',
+      staff: '/api/staff',
+      students: '/api/students',
+      attendance: '/api/attendance',
+      exams: '/api/exams',
+      timetables: '/api/timetables',
+      fees: '/api/fees',
+      crm: '/api/crm',
+      settings: '/api/settings',
+      upload: '/api/upload',
+    },
+  });
+});
+
 // Mount Modules
 router.use('/auth', authRoutes);
 router.use('/dashboard', dashboardRoutes);
