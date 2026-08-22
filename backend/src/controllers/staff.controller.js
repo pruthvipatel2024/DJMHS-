@@ -85,8 +85,15 @@ const createStaff = async (req, res, next) => {
     const { firstName, lastName, gender, dob, designation, departmentId, phone, email, address, joinDate } = req.body;
 
     // Auto-generate unique Employee ID: DJMHS-EMP-XXXX per PRD Chapter 3.5
-    const count = await prisma.staff.count();
-    const empId = `DJMHS-EMP-${(count + 1).toString().padStart(4, '0')}`;
+    let count = await prisma.staff.count();
+    let nextCount = count + 1;
+    let empId = `DJMHS-EMP-${nextCount.toString().padStart(4, '0')}`;
+    let existingStaff = await prisma.staff.findUnique({ where: { empId } });
+    while (existingStaff) {
+      nextCount++;
+      empId = `DJMHS-EMP-${nextCount.toString().padStart(4, '0')}`;
+      existingStaff = await prisma.staff.findUnique({ where: { empId } });
+    }
 
     // Create User Account with Default Password
     const defaultPassword = 'Password@123';
@@ -113,18 +120,40 @@ const createStaff = async (req, res, next) => {
 
     const validDesignation = mapDesignation(designation);
 
+    const cleanEmail = (email && email.trim()) ? email.trim() : null;
+    const cleanPhone = (phone && phone.trim()) ? phone.trim() : null;
+    let staffIdentifier = cleanEmail || empId;
+
+    let existingUser = await prisma.user.findFirst({
+      where: {
+        OR: [
+          { identifier: staffIdentifier },
+          { identifier: empId },
+          ...(cleanEmail ? [{ email: cleanEmail }] : []),
+          ...(cleanPhone ? [{ phone: cleanPhone }] : []),
+        ],
+      },
+    });
+
+    if (existingUser) {
+      staffIdentifier = empId;
+    }
+
     // Transaction to ensure relational consistency
     const newStaff = await prisma.$transaction(async (tx) => {
-      const newUser = await tx.user.create({
-        data: {
-          identifier: email || empId,
-          email: email,
-          phone: phone,
-          passwordHash: passwordHash,
-          roleId: teacherRole.id,
-          isFirstLogin: true,
-        },
-      });
+      let newUser = existingUser;
+      if (!newUser) {
+        newUser = await tx.user.create({
+          data: {
+            identifier: staffIdentifier,
+            email: cleanEmail,
+            phone: cleanPhone,
+            passwordHash: passwordHash,
+            roleId: teacherRole.id,
+            isFirstLogin: true,
+          },
+        });
+      }
 
       return await tx.staff.create({
         data: {

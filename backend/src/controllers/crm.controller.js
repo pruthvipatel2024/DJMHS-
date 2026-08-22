@@ -17,9 +17,15 @@ const getInquiries = async (req, res, next) => {
 
 const createInquiry = async (req, res, next) => {
   try {
-    const { studentName, parentName, phone, email, targetStandardId, notes } = req.body;
-    const count = await prisma.admissionInquiry.count();
-    const inquiryNo = `SDJM-INQ-${new Date().getFullYear()}-${(count + 1).toString().padStart(3, '0')}`;
+    let count = await prisma.admissionInquiry.count();
+    let nextCount = count + 1;
+    let inquiryNo = `SDJM-INQ-${new Date().getFullYear()}-${nextCount.toString().padStart(3, '0')}`;
+    let existingInq = await prisma.admissionInquiry.findUnique({ where: { inquiryNo } });
+    while (existingInq) {
+      nextCount++;
+      inquiryNo = `SDJM-INQ-${new Date().getFullYear()}-${nextCount.toString().padStart(3, '0')}`;
+      existingInq = await prisma.admissionInquiry.findUnique({ where: { inquiryNo } });
+    }
 
     const inquiry = await prisma.admissionInquiry.create({
       data: {
