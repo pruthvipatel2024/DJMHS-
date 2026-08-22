@@ -187,6 +187,7 @@ const createStudent = async (req, res, next) => {
 
       // 2. Multi-Child Parent Linkage Logic per PRD Chapter 4 & 9
       let parent = null;
+      let isNewParent = false;
       if (parentPhone || parentEmail) {
         parent = await tx.parent.findFirst({
           where: {
@@ -199,6 +200,7 @@ const createStudent = async (req, res, next) => {
       }
 
       if (!parent) {
+        isNewParent = true;
         const cleanPhone = (parentPhone && parentPhone.trim()) ? parentPhone.trim() : null;
         const cleanEmail = (parentEmail && parentEmail.trim()) ? parentEmail.trim() : null;
         const pIdentifier = cleanEmail || cleanPhone || `parent_${grNumber.toLowerCase()}`;
@@ -261,22 +263,24 @@ const createStudent = async (req, res, next) => {
       return { student, parent, isNewParent };
     });
 
-    // Send notifications
-    await sendSMS(
-      parentPhone,
-      `DJMHS High School Admission Confirmed for ${firstName} ${lastName}! GR No: ${grNumber}. Parent Portal Login ID: ${parentEmail || parentPhone}, Password: ${defaultPassword}.`
-    );
+    // Non-blocking notification dispatches
+    if (parentPhone) {
+      sendSMS(
+        parentPhone,
+        `DJMHS High School Admission Confirmed for ${firstName} ${lastName}! GR No: ${grNumber}. Parent Portal Login ID: ${parentEmail || parentPhone}, Password: ${defaultPassword}.`
+      ).catch(() => {});
+    }
     if (parentEmail && result.isNewParent) {
-      await sendEmail(
+      sendEmail(
         parentEmail,
         'DJMHS High School - Student Admission & Parent Portal Credentials',
         `<p>Welcome to <strong>Shree Dhaneshkumar Jasvantlal Maheta High School</strong>. Admission confirmed for your child <strong>${firstName} ${lastName}</strong> (GR No: ${grNumber}).<br/>Parent Portal Login: <strong>${parentEmail || parentPhone}</strong> | Password: <strong>${defaultPassword}</strong>.</p>`
-      );
+      ).catch(() => {});
     }
 
     res.status(201).json({
       success: true,
-      message: `Student enrolled successfully! GR Number: ${grNumber}. Linked to guardian profile (${result.parent.firstName} ${result.parent.lastName}).`,
+      message: `Student enrolled successfully! GR Number: ${grNumber}. Linked to guardian profile.`,
       data: result.student,
     });
   } catch (err) {
