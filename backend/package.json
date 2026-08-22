@@ -5,7 +5,7 @@
   "description": "Backend API REST server for SDJM High School ERP",
   "main": "src/server.js",
   "scripts": {
-    "build": "prisma generate",
+    "build": "prisma generate && node prisma/seed.js",
     "start": "node src/server.js",
     "dev": "nodemon src/server.js",
     "db:generate": "prisma generate",
