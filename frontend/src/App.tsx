@@ -52,8 +52,9 @@ const RootRedirect: React.FC = () => {
   if (!isAuthenticated || !user) {
     return <Navigate to="/login" replace />;
   }
-  if (user.role.name === 'ADMIN') return <Navigate to="/admin/dashboard" replace />;
-  if (user.role.name === 'TEACHER') return <Navigate to="/teacher/dashboard" replace />;
+  const userRole = typeof user.role === 'string' ? user.role : (user.role?.name || '');
+  if (userRole === 'ADMIN') return <Navigate to="/admin/dashboard" replace />;
+  if (userRole === 'TEACHER') return <Navigate to="/teacher/dashboard" replace />;
   return <Navigate to="/portal/dashboard" replace />;
 };
 

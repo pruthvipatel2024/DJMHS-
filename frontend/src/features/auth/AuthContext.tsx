@@ -16,6 +16,12 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
+const getRoleName = (u: any): string => {
+  if (!u || !u.role) return '';
+  if (typeof u.role === 'string') return u.role;
+  return u.role.name || '';
+};
+
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [user, setUser] = useState<User | null>(null);
   const [token, setToken] = useState<string | null>(null);
@@ -30,20 +36,19 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     if (savedToken && savedUserStr) {
       try {
         const parsedUser = JSON.parse(savedUserStr) as User;
+        const roleName = getRoleName(parsedUser);
         setToken(savedToken);
         setUser(parsedUser);
 
         // Initialize active sibling for Parent roles
-        if (parsedUser.role.name === 'PARENT' && parsedUser.parentProfile?.students?.length) {
+        if (roleName === 'PARENT' && parsedUser.parentProfile?.students?.length) {
           const firstChild = parsedUser.parentProfile.students[0].student;
           setActiveSibling(firstChild);
-        } else if (parsedUser.role.name === 'STUDENT' && parsedUser.studentProfile) {
+        } else if (roleName === 'STUDENT' && parsedUser.studentProfile) {
           setActiveSibling(parsedUser.studentProfile);
         }
       } catch (err) {
         console.error('Error parsing stored session:', err);
-        localStorage.clear();
-        sessionStorage.clear();
       }
     }
     setIsLoading(false);
@@ -57,9 +62,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     targetStorage.setItem('sdjm_token', newToken);
     targetStorage.setItem('sdjm_user', JSON.stringify(loggedInUser));
 
-    if (loggedInUser.role.name === 'PARENT' && loggedInUser.parentProfile?.students?.length) {
+    const roleName = getRoleName(loggedInUser);
+    if (roleName === 'PARENT' && loggedInUser.parentProfile?.students?.length) {
       setActiveSibling(loggedInUser.parentProfile.students[0].student);
-    } else if (loggedInUser.role.name === 'STUDENT' && loggedInUser.studentProfile) {
+    } else if (roleName === 'STUDENT' && loggedInUser.studentProfile) {
       setActiveSibling(loggedInUser.studentProfile);
     }
   };

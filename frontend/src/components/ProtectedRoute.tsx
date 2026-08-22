@@ -39,13 +39,15 @@ const ProtectedRoute: React.FC<ProtectedRouteProps> = ({ children, allowedRoles 
     );
   }
 
-  if (allowedRoles && !allowedRoles.includes(user.role.name)) {
+  const userRole = typeof user.role === 'string' ? user.role : (user.role?.name || '');
+
+  if (allowedRoles && !allowedRoles.includes(userRole)) {
     // User is authenticated but does not have permission for the requested route.
     // Redirect to their respective landing dashboard.
     const defaultRedirect =
-      user.role.name === 'ADMIN'
+      userRole === 'ADMIN'
         ? '/admin/dashboard'
-        : user.role.name === 'TEACHER'
+        : userRole === 'TEACHER'
         ? '/teacher/dashboard'
         : '/portal/dashboard';
     return <Navigate to={defaultRedirect} replace />;
