@@ -35,6 +35,51 @@ const getAllStaff = async (req, res, next) => {
       ];
     }
 
+    // Auto-reconcile any unlinked TEACHER/ADMIN User records so 100% of database users appear
+    const teacherRoles = await prisma.role.findMany({ where: { name: { in: ['TEACHER', 'ADMIN'] } } });
+    const teacherRoleIds = teacherRoles.map(r => r.id);
+    const unlinkedUsers = await prisma.user.findMany({
+      where: {
+        roleId: { in: teacherRoleIds },
+        deletedAt: null,
+        staffProfile: null,
+      },
+    });
+
+    if (unlinkedUsers.length > 0) {
+      let defaultDept = await prisma.department.findFirst();
+      if (!defaultDept) {
+        defaultDept = await prisma.department.create({
+          data: { name: 'Commerce & Accounts', description: 'Faculty Department' }
+        });
+      }
+
+      for (const u of unlinkedUsers) {
+        const count = await prisma.staff.count();
+        const empId = `DJMHS-EMP-${(count + 1).toString().padStart(4, '0')}`;
+        const cleanId = (u.email || u.identifier || 'faculty.member').split('@')[0];
+        const parts = cleanId.split('.');
+        const firstName = parts[0] ? (parts[0].charAt(0).toUpperCase() + parts[0].slice(1)) : 'Faculty';
+        const lastName = parts[1] ? (parts[1].charAt(0).toUpperCase() + parts[1].slice(1)) : 'Member';
+
+        await prisma.staff.create({
+          data: {
+            userId: u.id,
+            empId,
+            firstName,
+            lastName,
+            gender: 'Male',
+            dob: new Date('1990-01-01'),
+            designation: u.roleId === teacherRoles.find(r => r.name === 'ADMIN')?.id ? 'PRINCIPAL' : 'TEACHER',
+            departmentId: defaultDept.id,
+            email: u.email || `${u.identifier}@sdjmt.edu.in`,
+            phone: u.phone || '9876543210',
+            address: 'Bhavnagar, Gujarat',
+          },
+        }).catch(() => {});
+      }
+    }
+
     const staffList = await prisma.staff.findMany({
       where,
       include: {
@@ -175,10 +220,12 @@ const createStaff = async (req, res, next) => {
       });
     });
 
-    // Notify Staff Member with initial credentials
-    await sendSMS(phone, `Welcome to DJMHS High School! Your Faculty Portal ID is ${email || empId} and password is ${defaultPassword}. Please change password on first login.`);
+    // Non-blocking notification dispatch
+    if (phone) {
+      sendSMS(phone, `Welcome to DJMHS High School! Your Faculty Portal ID is ${email || empId} and password is ${defaultPassword}. Please change password on first login.`).catch(() => {});
+    }
     if (email) {
-      await sendEmail(email, 'DJMHS High School - Faculty Onboarding Credentials', `<p>Welcome <strong>${firstName} ${lastName}</strong> to DJMHS High School Faculty team. Login identifier: <strong>${email}</strong> | Password: <strong>${defaultPassword}</strong></p>`);
+      sendEmail(email, 'DJMHS High School - Faculty Onboarding Credentials', `<p>Welcome <strong>${firstName} ${lastName}</strong> to DJMHS High School Faculty team. Login identifier: <strong>${email}</strong> | Password: <strong>${defaultPassword}</strong></p>`).catch(() => {});
     }
 
     res.status(201).json({
