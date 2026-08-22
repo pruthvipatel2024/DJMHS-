@@ -21,18 +21,19 @@ app.use(
   }),
 );
 
-// Cross Origin Resource Sharing for local Vite development & future production origins
-app.use(
-  cors({
-    origin: [
-      config.frontendUrl,
-      "http://localhost:5173",
-      "http://127.0.0.1:5173",
-    ],
-    credentials: true,
-    methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-  }),
-);
+// Cross Origin Resource Sharing for local Vite development & production Vercel origins
+app.use(cors({
+  origin: (origin, callback) => {
+    // Allow requests with no origin (like mobile apps or curl)
+    if (!origin) return callback(null, true);
+    
+    // Echo back the requesting origin to satisfy Access-Control-Allow-Credentials
+    return callback(null, origin);
+  },
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With'],
+}));
 
 // Request parsers & logging
 app.use(express.json({ limit: "10mb" }));
