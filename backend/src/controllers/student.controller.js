@@ -96,8 +96,15 @@ const createStudent = async (req, res, next) => {
     } = req.body;
 
     // 1. Auto-generate General Register Number: DJMHS-GR-XXXXXX per PRD Chapter 3.5 & Chapter 8
-    const count = await prisma.student.count();
-    const grNumber = `DJMHS-GR-${(count + 1).toString().padStart(6, '0')}`;
+    let count = await prisma.student.count();
+    let nextCount = count + 1;
+    let grNumber = `DJMHS-GR-${nextCount.toString().padStart(6, '0')}`;
+    let existingStudent = await prisma.student.findUnique({ where: { grNumber } });
+    while (existingStudent) {
+      nextCount++;
+      grNumber = `DJMHS-GR-${nextCount.toString().padStart(6, '0')}`;
+      existingStudent = await prisma.student.findUnique({ where: { grNumber } });
+    }
 
     const studentRole = await prisma.role.findUnique({ where: { name: 'STUDENT' } });
     const parentRole = await prisma.role.findUnique({ where: { name: 'PARENT' } });
@@ -121,6 +128,35 @@ const createStudent = async (req, res, next) => {
     }
     if (targetDivision) validDivisionId = targetDivision.id;
 
+    // Auto-compute unique roll number for target division
+    let targetRoll = rollNumber ? String(rollNumber).trim() : '';
+    if (!targetRoll) {
+      const maxRollStudent = await prisma.student.findFirst({
+        where: { divisionId: validDivisionId, status: 'ACTIVE', deletedAt: null },
+        orderBy: { rollNumber: 'desc' },
+        select: { rollNumber: true },
+      });
+      let maxVal = 0;
+      if (maxRollStudent && maxRollStudent.rollNumber) {
+        const p = parseInt(maxRollStudent.rollNumber, 10);
+        if (!isNaN(p)) maxVal = p;
+      }
+      targetRoll = String(maxVal + 1);
+    }
+    let rollExists = await prisma.student.findFirst({
+      where: { divisionId: validDivisionId, rollNumber: targetRoll, status: 'ACTIVE', deletedAt: null },
+    });
+    if (rollExists) {
+      let rVal = parseInt(targetRoll, 10) || 1;
+      while (rollExists) {
+        rVal++;
+        targetRoll = String(rVal);
+        rollExists = await prisma.student.findFirst({
+          where: { divisionId: validDivisionId, rollNumber: targetRoll, status: 'ACTIVE', deletedAt: null },
+        });
+      }
+    }
+
     const result = await prisma.$transaction(async (tx) => {
       // Create Student User profile
       const studentUser = await tx.user.create({
@@ -137,7 +173,7 @@ const createStudent = async (req, res, next) => {
         data: {
           userId: studentUser.id,
           grNumber,
-          rollNumber: rollNumber || String(count + 1),
+          rollNumber: targetRoll,
           firstName,
           lastName,
           gender: gender || 'Male',
@@ -150,24 +186,47 @@ const createStudent = async (req, res, next) => {
       });
 
       // 2. Multi-Child Parent Linkage Logic per PRD Chapter 4 & 9
-      // Check if a parent already exists with this phone number or email
-      let parent = await tx.parent.findFirst({
-        where: { OR: [{ phone: parentPhone }, { email: parentEmail || 'N_A_NONE' }] },
-      });
-
-      let isNewParent = false;
-      if (!parent) {
-        isNewParent = true;
-        const parentUser = await tx.user.create({
-          data: {
-            identifier: parentEmail || parentPhone,
-            email: parentEmail,
-            phone: parentPhone,
-            passwordHash: passwordHash,
-            roleId: parentRole.id,
-            isFirstLogin: true,
+      let parent = null;
+      if (parentPhone || parentEmail) {
+        parent = await tx.parent.findFirst({
+          where: {
+            OR: [
+              ...(parentPhone ? [{ phone: parentPhone }] : []),
+              ...(parentEmail ? [{ email: parentEmail }] : [])
+            ]
           },
         });
+      }
+
+      if (!parent) {
+        const cleanPhone = (parentPhone && parentPhone.trim()) ? parentPhone.trim() : null;
+        const cleanEmail = (parentEmail && parentEmail.trim()) ? parentEmail.trim() : null;
+        const pIdentifier = cleanEmail || cleanPhone || `parent_${grNumber.toLowerCase()}`;
+
+        let existingParentUser = await tx.user.findFirst({
+          where: {
+            OR: [
+              { identifier: pIdentifier },
+              ...(cleanEmail ? [{ email: cleanEmail }] : []),
+              ...(cleanPhone ? [{ phone: cleanPhone }] : [])
+            ]
+          }
+        });
+
+        let parentUserId = existingParentUser ? existingParentUser.id : null;
+        if (!parentUserId) {
+          const parentUser = await tx.user.create({
+            data: {
+              identifier: pIdentifier,
+              email: cleanEmail,
+              phone: cleanPhone,
+              passwordHash: passwordHash,
+              roleId: parentRole.id,
+              isFirstLogin: true,
+            },
+          });
+          parentUserId = parentUser.id;
+        }
 
         const parentFullName = [parentFirstName, parentLastName].filter(Boolean).join(' ') || 'Guardian';
         const rel = (relationship || 'Father').trim();
@@ -177,12 +236,12 @@ const createStudent = async (req, res, next) => {
 
         parent = await tx.parent.create({
           data: {
-            userId: parentUser.id,
+            userId: parentUserId,
             fatherName: (!isMother && !isGuardian) ? parentFullName : (parentFirstName || 'Father'),
             motherName: isMother ? parentFullName : null,
             guardianName: isGuardian ? parentFullName : null,
-            phone: parentPhone,
-            email: parentEmail || null,
+            phone: cleanPhone,
+            email: cleanEmail,
             address: address || 'Bhavnagar, Gujarat',
             relationship: rel,
           },
