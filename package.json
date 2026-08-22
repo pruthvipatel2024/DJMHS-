@@ -1,0 +1,25 @@
+{
+  "name": "sdjm-high-school-erp",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Production-ready enterprise SaaS School ERP system for Shree Dhaneshkumar Jasvantlal Maheta High School (Bhavnagar, Est. 1959).",
+  "workspaces": [
+    "frontend",
+    "backend"
+  ],
+  "scripts": {
+    "dev": "concurrently \"npm run dev -w backend\" \"npm run dev -w frontend\"",
+    "dev:backend": "npm run dev -w backend",
+    "dev:frontend": "npm run dev -w frontend",
+    "build": "npm run build -w frontend && npm run build -w backend",
+    "start": "npm run start -w backend",
+    "lint": "npm run lint -w frontend && npm run lint -w backend",
+    "db:migrate": "npm run db:migrate -w backend",
+    "db:seed": "npm run db:seed -w backend"
+  },
+  "devDependencies": {
+    "concurrently": "^8.2.2"
+  },
+  "author": "Antigravity — Senior Full Stack & Solution Architect",
+  "license": "Proprietary - Vendor-Confidential to SDJM High School"
+}

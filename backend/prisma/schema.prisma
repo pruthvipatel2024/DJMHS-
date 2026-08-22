@@ -1,0 +1,870 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ----------------------------------------------------------------------
+// 1. CORE IDENTITY, AUTHENTICATION & RBAC MODULE
+// ----------------------------------------------------------------------
+
+enum RoleType {
+  ADMIN
+  TEACHER
+  STUDENT
+  PARENT
+}
+
+model Role {
+  id          String           @id @default(uuid())
+  name        RoleType         @unique
+  description String?
+  permissions RolePermission[]
+  users       User[]
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
+}
+
+model Permission {
+  id          String           @id @default(uuid())
+  name        String           @unique // e.g., "student:create", "attendance:mark"
+  description String?
+  module      String // e.g., "STUDENTS", "ATTENDANCE", "FEES"
+  roles       RolePermission[]
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
+}
+
+model RolePermission {
+  id           String     @id @default(uuid())
+  roleId       String
+  permissionId String
+  role         Role       @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  permission   Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
+
+  @@unique([roleId, permissionId])
+  @@index([roleId])
+}
+
+model User {
+  id                  String         @id @default(uuid())
+  identifier          String         @unique // Email, Mobile, Employee ID, or GR Number
+  email               String?        @unique
+  phone               String?        @unique
+  passwordHash        String
+  roleId              String
+  role                Role           @relation(fields: [roleId], references: [id])
+  isActive            Boolean        @default(true)
+  isLocked            Boolean        @default(false)
+  lockUntil           DateTime?
+  failedLoginAttempts Int            @default(0)
+  isFirstLogin        Boolean        @default(true) // Forces password change per Chapter 1
+  preferredLanguage   String         @default("en") // i18n persistence: 'en', 'gu', 'hi'
+  resetOtp            String?
+  resetOtpExpiry      DateTime?
+  sessions            Session[]
+  auditLogs           AuditLog[]     @relation("UserAuditLogs")
+  notifications       Notification[]
+  staffProfile        Staff?
+  studentProfile      Student?
+  parentProfile       Parent?
+  createdAt           DateTime       @default(now())
+  updatedAt           DateTime       @updatedAt
+  deletedAt           DateTime?
+
+  @@index([roleId])
+  @@index([identifier])
+}
+
+model Session {
+  id           String   @id @default(uuid())
+  userId       String
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  token        String   @unique
+  refreshToken String   @unique
+  device       String?
+  ipAddress    String?
+  expiresAt    DateTime
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@index([userId])
+}
+
+model AuditLog {
+  id        String   @id @default(uuid())
+  userId    String?
+  actor     User?    @relation("UserAuditLogs", fields: [userId], references: [id])
+  actorName String // Stored as plain text in case user record is deleted/inactive
+  action    String // e.g., "LOGIN_SUCCESS", "STUDENT_ADMITTED", "FEE_PAID"
+  entity    String // e.g., "STUDENT", "FEE_PAYMENT"
+  entityId  String?
+  diff      String? // JSON representation of before/after state
+  reason    String? // Mandatory for override actions and deletions
+  ipAddress String?
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+  @@index([entity, entityId])
+  @@index([createdAt])
+}
+
+// ----------------------------------------------------------------------
+// 2. ACADEMIC FOUNDATION & DEPARTMENTS
+// ----------------------------------------------------------------------
+
+model AcademicYear {
+  id           String                   @id @default(uuid())
+  name         String                   @unique // e.g., "2026-2027"
+  startDate    DateTime
+  endDate      DateTime
+  isCurrent    Boolean                  @default(false)
+  classMapping ClassTeacherMapping[]
+  timetables   Timetable[]
+  exams        Exam[]
+  feeStructure FeeStructure[]
+  holidays     Holiday[]
+  promotions   StudentAcademicHistory[]
+  createdAt    DateTime                 @default(now())
+  updatedAt    DateTime                 @updatedAt
+  deletedAt    DateTime?
+}
+
+model Department {
+  id           String    @id @default(uuid())
+  name         String    @unique // Science, Commerce, Administration, Languages, Sports
+  description  String?
+  staffMembers Staff[]
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+  deletedAt    DateTime?
+}
+
+model Standard {
+  id           String         @id @default(uuid())
+  name         String         @unique // e.g., "Standard 10", "Standard 12 Commerce"
+  level        Int // Numeric sorting sequence (1, 2, 3... 12)
+  minAge       Int            @default(5)
+  maxAge       Int            @default(20)
+  capacity     Int            @default(60)
+  divisions    Division[]
+  subjects     Subject[]
+  exams        Exam[]
+  feeStructure FeeStructure[]
+  createdAt    DateTime       @default(now())
+  updatedAt    DateTime       @updatedAt
+  deletedAt    DateTime?
+}
+
+model Division {
+  id                String                   @id @default(uuid())
+  standardId        String
+  standard          Standard                 @relation(fields: [standardId], references: [id], onDelete: Restrict)
+  name              String // e.g., "A", "B", "C"
+  roomNumber        String?
+  capacity          Int                      @default(40)
+  classTeachers     ClassTeacherMapping[]
+  students          Student[]
+  subjectMappings   StaffSubjectMapping[]
+  timetables        Timetable[]
+  attendanceRecords StudentAttendance[]
+  promotedFrom      StudentAcademicHistory[] @relation("FromDivision")
+  promotedTo        StudentAcademicHistory[] @relation("ToDivision")
+  createdAt         DateTime                 @default(now())
+  updatedAt         DateTime                 @updatedAt
+  deletedAt         DateTime?
+
+  @@unique([standardId, name])
+  @@index([standardId])
+}
+
+model Subject {
+  id              String                @id @default(uuid())
+  standardId      String
+  standard        Standard              @relation(fields: [standardId], references: [id], onDelete: Restrict)
+  name            String // e.g., "Mathematics", "Accountancy", "Gujarati"
+  code            String                @unique // e.g., "MATH-10", "GUJ-09"
+  isOptional      Boolean               @default(false)
+  teacherMappings StaffSubjectMapping[]
+  timetables      Timetable[]
+  examSchedules   ExamSchedule[]
+  createdAt       DateTime              @default(now())
+  updatedAt       DateTime              @updatedAt
+  deletedAt       DateTime?
+
+  @@index([standardId])
+}
+
+// ----------------------------------------------------------------------
+// 3. STAKEHOLDER RECORDS: STAFF, STUDENTS, PARENTS
+// ----------------------------------------------------------------------
+
+enum EmploymentType {
+  PERMANENT
+  CONTRACT
+  PART_TIME
+}
+
+enum Designation {
+  PRINCIPAL
+  VICE_PRINCIPAL
+  HOD
+  TEACHER
+  CLASS_TEACHER
+  NON_TEACHING_STAFF
+  OFFICE_ADMIN
+}
+
+model Staff {
+  id                 String                @id @default(uuid())
+  userId             String                @unique
+  user               User                  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  empId              String                @unique // System auto-generated immutable, e.g., SDJM-EMP-0001
+  firstName          String
+  lastName           String
+  gender             String
+  dob                DateTime
+  designation        Designation           @default(TEACHER)
+  joinDate           DateTime
+  employmentType     EmploymentType        @default(PERMANENT)
+  departmentId       String
+  department         Department            @relation(fields: [departmentId], references: [id], onDelete: Restrict)
+  phone              String                @unique
+  email              String                @unique
+  address            String
+  photoUrl           String?
+  classTeaching      ClassTeacherMapping[]
+  subjectTeaching    StaffSubjectMapping[]
+  timetables         Timetable[]
+  attendanceRecords  StaffAttendance[]
+  enteredMarks       Mark[]                @relation("MarkEnteredBy")
+  assignedComplaints Complaint[]           @relation("ComplaintAssignedTo")
+  createdAt          DateTime              @default(now())
+  updatedAt          DateTime              @updatedAt
+  deletedAt          DateTime?
+
+  @@index([departmentId])
+}
+
+model StaffSubjectMapping {
+  id         String   @id @default(uuid())
+  staffId    String
+  subjectId  String
+  divisionId String
+  staff      Staff    @relation(fields: [staffId], references: [id], onDelete: Cascade)
+  subject    Subject  @relation(fields: [subjectId], references: [id], onDelete: Cascade)
+  division   Division @relation(fields: [divisionId], references: [id], onDelete: Cascade)
+  createdAt  DateTime @default(now())
+
+  @@unique([staffId, subjectId, divisionId])
+  @@index([staffId])
+  @@index([subjectId])
+  @@index([divisionId])
+}
+
+model ClassTeacherMapping {
+  id             String       @id @default(uuid())
+  staffId        String
+  divisionId     String
+  academicYearId String
+  isCoTeacher    Boolean      @default(false) // Ensures 1 primary class teacher per division
+  staff          Staff        @relation(fields: [staffId], references: [id], onDelete: Cascade)
+  division       Division     @relation(fields: [divisionId], references: [id], onDelete: Cascade)
+  academicYear   AcademicYear @relation(fields: [academicYearId], references: [id], onDelete: Cascade)
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  @@unique([divisionId, academicYearId, isCoTeacher])
+  @@index([staffId])
+  @@index([divisionId])
+}
+
+enum StudentStatus {
+  ACTIVE
+  INACTIVE
+  TRANSFERRED_OUT
+  GRADUATED
+}
+
+model Student {
+  id               String                   @id @default(uuid())
+  userId           String                   @unique
+  user             User                     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  grNumber         String                   @unique // Permanent Immutable ID: SDJM-GR-000001
+  rollNumber       String // Annual class scoped sequence (e.g., "01", "24")
+  firstName        String
+  lastName         String
+  gender           String
+  dob              DateTime
+  admissionDate    DateTime                 @default(now())
+  status           StudentStatus            @default(ACTIVE)
+  divisionId       String
+  division         Division                 @relation(fields: [divisionId], references: [id], onDelete: Restrict)
+  bloodGroup       String?
+  allergies        String?
+  emergencyContact String?
+  photoUrl         String?
+  parents          StudentParentMapping[]
+  attendance       StudentAttendance[]
+  marks            Mark[]
+  results          Result[]
+  feeInstallments  FeeInstallment[]
+  feePayments      FeePayment[]
+  promotions       StudentAcademicHistory[]
+  complaints       Complaint[]              @relation("ComplaintStudent")
+  createdAt        DateTime                 @default(now())
+  updatedAt        DateTime                 @updatedAt
+  deletedAt        DateTime?
+
+  @@unique([divisionId, rollNumber, status]) // Roll no unique per active division
+  @@index([divisionId])
+  @@index([grNumber])
+}
+
+model Parent {
+  id           String                 @id @default(uuid())
+  userId       String                 @unique
+  user         User                   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  fatherName   String?
+  motherName   String?
+  guardianName String?
+  occupation   String?
+  phone        String                 @unique
+  email        String?
+  address      String
+  relationship String                 @default("Father") // Father, Mother, Guardian
+  students     StudentParentMapping[]
+  createdAt    DateTime               @default(now())
+  updatedAt    DateTime               @updatedAt
+  deletedAt    DateTime?
+}
+
+model StudentParentMapping {
+  id           String  @id @default(uuid())
+  studentId    String
+  parentId     String
+  relationship String  @default("Father")
+  isPrimary    Boolean @default(true)
+  student      Student @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  parent       Parent  @relation(fields: [parentId], references: [id], onDelete: Cascade)
+
+  @@unique([studentId, parentId])
+  @@index([studentId])
+  @@index([parentId])
+}
+
+enum PromotionStatus {
+  PROMOTED
+  RETAINED_FAIL
+  SECTION_TRANSFER
+}
+
+model StudentAcademicHistory {
+  id              String          @id @default(uuid())
+  studentId       String
+  academicYearId  String
+  fromDivisionId  String
+  toDivisionId    String
+  promotionStatus PromotionStatus
+  remarks         String?
+  student         Student         @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  academicYear    AcademicYear    @relation(fields: [academicYearId], references: [id], onDelete: Restrict)
+  fromDivision    Division        @relation("FromDivision", fields: [fromDivisionId], references: [id], onDelete: Restrict)
+  toDivision      Division        @relation("ToDivision", fields: [toDivisionId], references: [id], onDelete: Restrict)
+  createdAt       DateTime        @default(now())
+
+  @@index([studentId])
+  @@index([academicYearId])
+}
+
+// ----------------------------------------------------------------------
+// 4. TIMETABLE & ATTENDANCE MODULES
+// ----------------------------------------------------------------------
+
+model Timetable {
+  id             String       @id @default(uuid())
+  divisionId     String
+  subjectId      String
+  staffId        String
+  academicYearId String
+  dayOfWeek      String // "MON", "TUE", "WED", "THU", "FRI", "SAT"
+  periodNumber   Int // 1, 2, 3, 4, 5, 6, 7, 8
+  startTime      String // e.g., "08:00 AM"
+  endTime        String // e.g., "08:45 AM"
+  roomNumber     String?
+  division       Division     @relation(fields: [divisionId], references: [id], onDelete: Cascade)
+  subject        Subject      @relation(fields: [subjectId], references: [id], onDelete: Restrict)
+  staff          Staff        @relation(fields: [staffId], references: [id], onDelete: Restrict)
+  academicYear   AcademicYear @relation(fields: [academicYearId], references: [id], onDelete: Cascade)
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+  deletedAt      DateTime?
+
+  @@unique([divisionId, dayOfWeek, periodNumber]) // Prevents double booking division
+  @@unique([staffId, dayOfWeek, periodNumber]) // Prevents teacher clash
+  @@index([divisionId])
+  @@index([staffId])
+}
+
+enum AttendanceStatus {
+  PRESENT
+  ABSENT
+  LEAVE
+  HALF_DAY
+  LATE
+}
+
+model StaffAttendance {
+  id         String           @id @default(uuid())
+  staffId    String
+  date       DateTime         @db.Date
+  status     AttendanceStatus @default(PRESENT)
+  leaveType  String? // Sick, Casual, Earned, Unpaid
+  remarks    String?
+  markedById String?
+  staff      Staff            @relation(fields: [staffId], references: [id], onDelete: Cascade)
+  createdAt  DateTime         @default(now())
+  updatedAt  DateTime         @updatedAt
+
+  @@unique([staffId, date])
+  @@index([staffId])
+  @@index([date])
+}
+
+model StudentAttendance {
+  id         String           @id @default(uuid())
+  studentId  String
+  divisionId String
+  date       DateTime         @db.Date
+  status     AttendanceStatus @default(PRESENT)
+  remarks    String?
+  markedById String? // ID of Teacher/Admin who submitted
+  student    Student          @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  division   Division         @relation(fields: [divisionId], references: [id], onDelete: Cascade)
+  createdAt  DateTime         @default(now())
+  updatedAt  DateTime         @updatedAt
+
+  @@unique([studentId, date])
+  @@index([divisionId, date])
+  @@index([studentId])
+}
+
+// ----------------------------------------------------------------------
+// 5. EXAMS, SCHEDULES, MARKS & RESULT COMPUTATION
+// ----------------------------------------------------------------------
+
+enum ExamType {
+  UNIT_TEST_1
+  QUARTERLY
+  UNIT_TEST_2
+  HALF_YEARLY
+  PRELIMINARY
+  ANNUAL_FINAL
+}
+
+model Exam {
+  id             String         @id @default(uuid())
+  academicYearId String
+  standardId     String
+  name           String // e.g., "First Term Finals 2026"
+  examType       ExamType       @default(UNIT_TEST_1)
+  startDate      DateTime
+  endDate        DateTime
+  isPublished    Boolean        @default(false)
+  academicYear   AcademicYear   @relation(fields: [academicYearId], references: [id], onDelete: Cascade)
+  standard       Standard       @relation(fields: [standardId], references: [id], onDelete: Cascade)
+  schedules      ExamSchedule[]
+  results        Result[]
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+  deletedAt      DateTime?
+
+  @@index([standardId])
+  @@index([academicYearId])
+}
+
+model ExamSchedule {
+  id           String    @id @default(uuid())
+  examId       String
+  subjectId    String
+  date         DateTime  @db.Date
+  startTime    String
+  endTime      String
+  maxMarks     Float     @default(100)
+  passingMarks Float     @default(35)
+  exam         Exam      @relation(fields: [examId], references: [id], onDelete: Cascade)
+  subject      Subject   @relation(fields: [subjectId], references: [id], onDelete: Restrict)
+  marks        Mark[]
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+  deletedAt    DateTime?
+
+  @@unique([examId, subjectId])
+  @@index([examId])
+}
+
+model Mark {
+  id             String       @id @default(uuid())
+  examScheduleId String
+  studentId      String
+  marksObtained  Float? // Nullable if absent
+  grade          String? // A+, A, B+, B, C, D, F
+  isAbsent       Boolean      @default(false)
+  remarks        String?
+  enteredById    String
+  enteredBy      Staff        @relation("MarkEnteredBy", fields: [enteredById], references: [id], onDelete: Restrict)
+  examSchedule   ExamSchedule @relation(fields: [examScheduleId], references: [id], onDelete: Cascade)
+  student        Student      @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  @@unique([examScheduleId, studentId])
+  @@index([studentId])
+  @@index([examScheduleId])
+}
+
+enum ResultStatus {
+  PASS
+  FAIL
+  COMPARTMENT
+}
+
+model Result {
+  id          String       @id @default(uuid())
+  examId      String
+  studentId   String
+  totalMarks  Float
+  percentage  Float
+  grade       String
+  status      ResultStatus @default(PASS)
+  remarks     String?
+  publishedAt DateTime?
+  exam        Exam         @relation(fields: [examId], references: [id], onDelete: Cascade)
+  student     Student      @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+
+  @@unique([examId, studentId])
+  @@index([studentId])
+  @@index([examId])
+}
+
+// ----------------------------------------------------------------------
+// 6. FEE MANAGEMENT & FINANCIAL LEDGER
+// ----------------------------------------------------------------------
+
+enum FeeType {
+  TUITION_FEE
+  LABORATORY_FEE
+  LIBRARY_FEE
+  SPORTS_FEE
+  DEVELOPMENT_FEE
+  ADMISSION_ONE_TIME
+}
+
+model FeeStructure {
+  id             String           @id @default(uuid())
+  academicYearId String
+  standardId     String
+  feeType        FeeType          @default(TUITION_FEE)
+  title          String // e.g., "Term 1 Tuition Fee Std 10"
+  amount         Float
+  dueDate        DateTime
+  description    String?
+  academicYear   AcademicYear     @relation(fields: [academicYearId], references: [id], onDelete: Cascade)
+  standard       Standard         @relation(fields: [standardId], references: [id], onDelete: Cascade)
+  installments   FeeInstallment[]
+  createdAt      DateTime         @default(now())
+  updatedAt      DateTime         @updatedAt
+  deletedAt      DateTime?
+
+  @@index([standardId, academicYearId])
+}
+
+enum PaymentStatus {
+  PAID
+  PENDING
+  PARTIAL
+  OVERDUE
+  WAIVED
+}
+
+model FeeInstallment {
+  id             String        @id @default(uuid())
+  studentId      String
+  feeStructureId String
+  title          String
+  amount         Float
+  dueDate        DateTime
+  status         PaymentStatus @default(PENDING)
+  paidAmount     Float         @default(0)
+  student        Student       @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  feeStructure   FeeStructure  @relation(fields: [feeStructureId], references: [id], onDelete: Restrict)
+  payments       FeePayment[]
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+  deletedAt      DateTime?
+
+  @@index([studentId])
+  @@index([feeStructureId])
+  @@index([status])
+}
+
+enum PaymentMethod {
+  CASH
+  CHEQUE
+  UPI
+  BANK_TRANSFER
+  ONLINE_CARD
+}
+
+model FeePayment {
+  id               String         @id @default(uuid())
+  feeInstallmentId String
+  studentId        String
+  amount           Float
+  paymentDate      DateTime       @default(now())
+  paymentMethod    PaymentMethod  @default(CASH)
+  transactionId    String? // Cheque number or UPI transaction ref
+  receiptNo        String         @unique // System generated: SDJM-REC-2026-0001
+  recordedById     String
+  feeInstallment   FeeInstallment @relation(fields: [feeInstallmentId], references: [id], onDelete: Restrict)
+  student          Student        @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  createdAt        DateTime       @default(now())
+  updatedAt        DateTime       @updatedAt
+
+  @@index([studentId])
+  @@index([feeInstallmentId])
+}
+
+// ----------------------------------------------------------------------
+// 7. COMMUNICATIONS, LEADS (CRM) & SUPPORT HELP DESK
+// ----------------------------------------------------------------------
+
+enum TargetRole {
+  ALL
+  ADMIN
+  TEACHER
+  STUDENT
+  PARENT
+}
+
+enum PriorityLevel {
+  NORMAL
+  HIGH
+  URGENT
+}
+
+model Announcement {
+  id          String        @id @default(uuid())
+  titleEn     String        @default("Untitled Announcement")
+  titleGu     String?
+  titleHi     String?
+  contentEn   String        @default("No content provided.") @db.Text
+  contentGu   String?       @db.Text
+  contentHi   String?       @db.Text
+  authorId    String
+  targetRole  TargetRole    @default(ALL)
+  priority    PriorityLevel @default(NORMAL)
+  publishedAt DateTime      @default(now())
+  expiresAt   DateTime?
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+  deletedAt   DateTime?
+
+  @@index([targetRole])
+}
+
+enum ComplaintCategory {
+  ACADEMIC
+  FACILITY
+  DISCIPLINE
+  FEE_FLEXIBILITY
+  BUS_TRANSPORT
+  GENERAL_OTHER
+}
+
+enum ComplaintStatus {
+  OPEN
+  IN_PROGRESS
+  RESOLVED
+  REJECTED
+}
+
+model Complaint {
+  id                String            @id @default(uuid())
+  ticketNumber      String            @unique // e.g., SDJM-CMP-1001
+  title             String
+  description       String            @db.Text
+  category          ComplaintCategory @default(GENERAL_OTHER)
+  status            ComplaintStatus   @default(OPEN)
+  priority          PriorityLevel     @default(NORMAL)
+  reportedById      String // User ID of parent, student, or teacher who raised it
+  assignedToStaffId String?
+  studentId         String?
+  resolutionNotes   String?           @db.Text
+  assignedToStaff   Staff?            @relation("ComplaintAssignedTo", fields: [assignedToStaffId], references: [id], onDelete: SetNull)
+  student           Student?          @relation("ComplaintStudent", fields: [studentId], references: [id], onDelete: SetNull)
+  createdAt         DateTime          @default(now())
+  updatedAt         DateTime          @updatedAt
+  deletedAt         DateTime?
+
+  @@index([reportedById])
+  @@index([assignedToStaffId])
+  @@index([status])
+}
+
+enum InquiryStatus {
+  NEW
+  CONTACTED
+  VISITED
+  CONVERTED
+  LOST
+}
+
+model AdmissionInquiry {
+  id                 String        @id @default(uuid())
+  inquiryNo          String        @unique // e.g., SDJM-INQ-2026-001
+  studentName        String
+  parentName         String
+  phone              String
+  email              String?
+  targetStandardId   String?
+  status             InquiryStatus @default(NEW)
+  nextFollowUp       DateTime?
+  notes              String?       @db.Text
+  assignedToId       String? // Staff/Admin ID responsible for follow-up
+  convertedStudentId String?       @unique // Linked when inquiry converts to formal Admission
+  createdAt          DateTime      @default(now())
+  updatedAt          DateTime      @updatedAt
+  deletedAt          DateTime?
+
+  @@index([status])
+}
+
+model Holiday {
+  id             String       @id @default(uuid())
+  academicYearId String
+  title          String // e.g., "Diwali Break", "Independence Day"
+  date           DateTime     @db.Date
+  endDate        DateTime?    @db.Date
+  description    String?
+  isSchoolWide   Boolean      @default(true)
+  academicYear   AcademicYear @relation(fields: [academicYearId], references: [id], onDelete: Cascade)
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+  deletedAt      DateTime?
+
+  @@index([academicYearId, date])
+}
+
+// ----------------------------------------------------------------------
+// 8. FILE STORAGE, NOTIFICATIONS & SYSTEM CONFIG
+// ----------------------------------------------------------------------
+
+enum DocumentType {
+  BIRTH_CERTIFICATE
+  TRANSFER_CERTIFICATE
+  AADHAR_ID_PROOF
+  PREVIOUS_MARKSHEET
+  MEDICAL_RECORD
+  STAFF_QUALIFICATION
+  EMPLOYMENT_CONTRACT
+  GENERAL_ATTACHMENT
+}
+
+model Document {
+  id           String       @id @default(uuid())
+  ownerType    String // "STUDENT", "STAFF", "COMPLAINT", "INQUIRY"
+  ownerId      String // Target Entity UUID
+  docType      DocumentType @default(GENERAL_ATTACHMENT)
+  title        String // e.g., "Aadhar Card PDF"
+  fileUrl      String // Saved path in uploads folder or cloud bucket
+  fileSize     Int // Bytes
+  mimeType     String // application/pdf, image/png
+  uploadedById String
+  createdAt    DateTime     @default(now())
+  updatedAt    DateTime     @updatedAt
+  deletedAt    DateTime?
+
+  @@index([ownerType, ownerId])
+}
+
+enum NotificationChannel {
+  IN_APP
+  SMS
+  EMAIL
+}
+
+model Notification {
+  id          String              @id @default(uuid())
+  recipientId String
+  recipient   User                @relation(fields: [recipientId], references: [id], onDelete: Cascade)
+  title       String
+  message     String              @db.Text
+  channel     NotificationChannel @default(IN_APP)
+  isRead      Boolean             @default(false)
+  sentAt      DateTime            @default(now())
+  createdAt   DateTime            @default(now())
+
+  @@index([recipientId, isRead])
+}
+
+model Setting {
+  id          String   @id @default(uuid())
+  key         String   @unique // e.g., "school_name", "max_class_strength", "default_academic_year_id"
+  value       String   @db.Text // Value stored as string or JSON string
+  description String?
+  category    String // "ACADEMIC", "SECURITY", "GENERAL", "COMMUNICATION"
+  updatedAt   DateTime @updatedAt
+}
+
+// ----------------------------------------------------------------------
+// 9. SYSTEM CONFIGURATION & OCR IMPORT JOBS
+// ----------------------------------------------------------------------
+
+model SchoolProfile {
+  id              String   @id @default(uuid())
+  schoolName      String   @default("Shree Dhaneshkumar Jasvantlal Maheta High School")
+  shortName       String   @default("DJMHS")
+  logoUrl         String?
+  smallLogoUrl    String?
+  faviconUrl      String?
+  address         String?
+  phone           String?
+  email           String?
+  website         String?
+  principalName   String?
+  primaryColor    String   @default("#123E97")
+  secondaryColor  String   @default("#0B2D78")
+  accentColor     String   @default("#F2B233")
+  lightGoldColor  String   @default("#F7E7B5")
+  backgroundColor String   @default("#F8FAFC")
+  trustName       String?  @default("Bhavnagar Kelavani Mandal")
+  stampUrl        String?
+  signatureUrl    String?
+  updatedAt       DateTime @updatedAt
+  updatedById     String?
+}
+
+enum ImportStatus {
+  PROCESSING
+  COMPLETED
+  FAILED
+}
+
+model ImportJob {
+  id             String       @id @default(uuid())
+  entity         String // "STAFF", "STUDENT"
+  status         ImportStatus @default(PROCESSING)
+  sourceImageUrl String?
+  importedById   String
+  successCount   Int          @default(0)
+  failedCount    Int          @default(0)
+  errorReportUrl String?
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+}
