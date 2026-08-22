@@ -25,7 +25,9 @@ const getAllStaff = async (req, res, next) => {
     const { departmentId, search } = req.query;
     const where = { deletedAt: null };
 
-    if (departmentId) where.departmentId = departmentId;
+    if (departmentId && departmentId !== 'all' && departmentId !== 'undefined' && departmentId.trim() !== '') {
+      where.departmentId = departmentId;
+    }
     if (search) {
       where.OR = [
         { firstName: { contains: search, mode: 'insensitive' } },

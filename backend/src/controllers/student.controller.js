@@ -13,8 +13,11 @@ const getAllStudents = async (req, res, next) => {
     const { divisionId, standardId, search } = req.query;
     const where = { status: 'ACTIVE', deletedAt: null };
 
-    if (divisionId) where.divisionId = divisionId;
-    else if (standardId) where.division = { standardId: standardId };
+    if (divisionId && divisionId !== 'all' && divisionId !== 'undefined' && divisionId.trim() !== '') {
+      where.divisionId = divisionId;
+    } else if (standardId && standardId !== 'all' && standardId !== 'undefined' && standardId.trim() !== '') {
+      where.division = { standardId: standardId };
+    }
 
     if (search) {
       where.OR = [
