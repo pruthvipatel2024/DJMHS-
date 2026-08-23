@@ -1,6 +1,8 @@
 const nodemailer = require('nodemailer');
 const config = require('../config');
 
+let transporter = null;
+
 const getTransporter = () => {
   if (process.env.MOCK_COMMUNICATIONS_TO_LOG === 'true') {
     return null;
