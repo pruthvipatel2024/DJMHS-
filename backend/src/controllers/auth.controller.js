@@ -380,28 +380,46 @@ const requestStudentOtpController = async (req, res, next) => {
       return res.status(400).json({ success: false, error: 'GR Required', message: 'Student General Register (GR) Number is required.' });
     }
 
+    const cleanGr = String(grNumber).trim();
+    const formattedGr = cleanGr.toUpperCase().startsWith('DJMHS-GR-')
+      ? cleanGr.toUpperCase()
+      : `DJMHS-GR-${cleanGr.replace(/^DJMHS-GR-/i, '').padStart(6, '0')}`;
+
     // Lookup student in PostgreSQL
-    const student = await prisma.student.findUnique({
-      where: { grNumber },
+    const student = await prisma.student.findFirst({
+      where: {
+        OR: [
+          { grNumber: cleanGr },
+          { grNumber: formattedGr },
+          { grNumber: { equals: cleanGr, mode: 'insensitive' } },
+        ],
+        deletedAt: null,
+      },
       include: {
         parents: { include: { parent: { include: { user: true } } } },
       },
     });
 
-    // To prevent student identity enumeration, return generic message even if GR is not found
-    if (student) {
-      const primaryParent = student.parents?.find((p) => p.isPrimary)?.parent || student.parents?.[0]?.parent;
-      const contact = {
-        phone: primaryParent?.phone || primaryParent?.user?.phone,
-        email: primaryParent?.email || primaryParent?.user?.email,
-        studentName: `${student.firstName} ${student.lastName}`,
-      };
-      await requestStudentOtp(grNumber, contact);
+    if (!student) {
+      return res.status(404).json({
+        success: false,
+        error: 'Student Not Found',
+        message: `No active student found matching GR Number "${cleanGr}". Please verify your GR card.`,
+      });
     }
+
+    const primaryParent = student.parents?.find((p) => p.isPrimary)?.parent || student.parents?.[0]?.parent;
+    const contact = {
+      phone: primaryParent?.phone || primaryParent?.user?.phone,
+      email: primaryParent?.email || primaryParent?.user?.email,
+      studentName: `${student.firstName} ${student.lastName}`,
+    };
+
+    await requestStudentOtp(student.grNumber, contact);
 
     res.status(200).json({
       success: true,
-      message: 'If the details entered are valid, a verification OTP has been dispatched to the registered contact.',
+      message: `Verification OTP dispatched to registered guardian contact (${contact.email || contact.phone || 'Email/SMS'}). Valid for 5 minutes.`,
     });
   } catch (err) {
     next(err);
@@ -415,13 +433,35 @@ const verifyStudentOtpController = async (req, res, next) => {
       return res.status(400).json({ success: false, error: 'Incomplete Request', message: 'GR Number and OTP are required.' });
     }
 
+    const cleanGr = String(grNumber).trim();
+    const formattedGr = cleanGr.toUpperCase().startsWith('DJMHS-GR-')
+      ? cleanGr.toUpperCase()
+      : `DJMHS-GR-${cleanGr.replace(/^DJMHS-GR-/i, '').padStart(6, '0')}`;
+
+    const student = await prisma.student.findFirst({
+      where: {
+        OR: [
+          { grNumber: cleanGr },
+          { grNumber: formattedGr },
+          { grNumber: { equals: cleanGr, mode: 'insensitive' } },
+        ],
+        deletedAt: null,
+      },
+    });
+
+    const canonicalGr = student ? student.grNumber : cleanGr;
+
     // Verify OTP using secure OTP service
-    await verifyStudentOtp(grNumber, otp);
+    await verifyStudentOtp(canonicalGr, otp);
 
     // Retrieve Student user account from PostgreSQL
     const user = await prisma.user.findFirst({
       where: {
-        OR: [{ identifier: grNumber }, { studentProfile: { grNumber } }],
+        OR: [
+          { identifier: canonicalGr },
+          { studentProfile: { grNumber: canonicalGr } },
+          { id: student?.userId },
+        ],
       },
       include: {
         role: true,
