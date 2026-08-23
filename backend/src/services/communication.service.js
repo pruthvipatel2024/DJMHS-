@@ -8,13 +8,15 @@ const getTransporter = () => {
     return null;
   }
   if (!transporter && config.email.user && config.email.pass) {
+    const port = parseInt(config.email.port, 10) || 465;
+    const isSecure = port === 465;
     transporter = nodemailer.createTransport({
       host: config.email.host || 'smtp.gmail.com',
-      port: config.email.port || 587,
-      secure: config.email.port === 465,
-      connectionTimeout: 8000,
-      greetingTimeout: 8000,
-      socketTimeout: 12000,
+      port: port,
+      secure: isSecure,
+      connectionTimeout: 10000,
+      greetingTimeout: 10000,
+      socketTimeout: 15000,
       auth: {
         user: config.email.user,
         pass: config.email.pass,

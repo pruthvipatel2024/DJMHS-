@@ -14,7 +14,7 @@ const config = {
   uploadDir: process.env.UPLOAD_DIR || '../uploads',
   email: {
     host: process.env.SMTP_HOST || 'smtp.gmail.com',
-    port: parseInt(process.env.SMTP_PORT, 10) || 587,
+    port: parseInt(process.env.SMTP_PORT, 10) || 465,
     user: process.env.SMTP_USER || '',
     pass: process.env.SMTP_PASS || '',
     from: process.env.SMTP_FROM || process.env.SMTP_USER || 'no-reply@sdjmt-highschool.edu.in',
