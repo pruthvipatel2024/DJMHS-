@@ -8,20 +8,27 @@ const getTransporter = () => {
     return null;
   }
   if (!transporter && config.email.user && config.email.pass) {
-    const port = parseInt(config.email.port, 10) || 465;
-    const isSecure = port === 465;
-    transporter = nodemailer.createTransport({
-      host: config.email.host || 'smtp.gmail.com',
-      port: port,
-      secure: isSecure,
-      connectionTimeout: 10000,
-      greetingTimeout: 10000,
-      socketTimeout: 15000,
-      auth: {
-        user: config.email.user,
-        pass: config.email.pass,
-      },
-    });
+    const isGmail = (config.email.host && config.email.host.includes('gmail')) || (config.email.user && config.email.user.includes('@gmail.com'));
+    if (isGmail) {
+      transporter = nodemailer.createTransport({
+        service: 'gmail',
+        auth: {
+          user: config.email.user,
+          pass: config.email.pass,
+        },
+      });
+    } else {
+      const port = parseInt(config.email.port, 10) || 587;
+      transporter = nodemailer.createTransport({
+        host: config.email.host || 'smtp.gmail.com',
+        port: port,
+        secure: port === 465,
+        auth: {
+          user: config.email.user,
+          pass: config.email.pass,
+        },
+      });
+    }
   }
   return transporter;
 };
