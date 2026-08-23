@@ -161,6 +161,16 @@ const forgotPassword = async (req, res, next) => {
         OR: [{ email: identifier }, { phone: identifier }, { identifier: identifier }],
         deletedAt: null,
       },
+      include: {
+        staffProfile: true,
+        studentProfile: {
+          include: {
+            parents: {
+              include: { parent: { include: { user: true } } },
+            },
+          },
+        },
+      },
     });
 
     if (!user) {

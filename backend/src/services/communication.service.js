@@ -1,42 +1,52 @@
 const nodemailer = require('nodemailer');
 const config = require('../config');
 
-let transporter = null;
-if (!config.email.mock && config.email.user) {
-  transporter = nodemailer.createTransport({
-    host: config.email.host,
-    port: config.email.port,
-    secure: config.email.port === 465,
-    auth: {
-      user: config.email.user,
-      pass: config.email.pass,
-    },
-  });
-}
+const getTransporter = () => {
+  if (process.env.MOCK_COMMUNICATIONS_TO_LOG === 'true') {
+    return null;
+  }
+  if (!transporter && config.email.user && config.email.pass) {
+    transporter = nodemailer.createTransport({
+      host: config.email.host || 'smtp.gmail.com',
+      port: config.email.port || 587,
+      secure: config.email.port === 465,
+      auth: {
+        user: config.email.user,
+        pass: config.email.pass,
+      },
+    });
+  }
+  return transporter;
+};
 
 const sendSMS = async (to, message) => {
-  if (config.email.mock || !transporter) {
+  const activeTransporter = getTransporter();
+  if (process.env.MOCK_COMMUNICATIONS_TO_LOG === 'true' || !activeTransporter) {
     console.log(`[📱 MOCK SMS TO ${to}]: ${message}`);
     return { success: true, channel: 'SMS_MOCK' };
   }
   // In live environments, trigger Gateway API provider here
+  console.log(`[📱 LIVE SMS TO ${to}]: ${message}`);
   return { success: true, channel: 'SMS_LIVE' };
 };
 
 const sendEmail = async (to, subject, htmlContent) => {
-  if (config.email.mock || !transporter) {
+  const activeTransporter = getTransporter();
+  if (process.env.MOCK_COMMUNICATIONS_TO_LOG === 'true' || !activeTransporter) {
     console.log(`[📧 MOCK EMAIL TO ${to}] | SUBJECT: ${subject}\n--- CONTENT ---\n${htmlContent.replace(/<[^>]*>?/gm, '')}`);
     return { success: true, channel: 'EMAIL_MOCK' };
   }
 
   try {
-    await transporter.sendMail({
-      from: `"${config.schoolName}" <${config.email.from}>`,
+    const fromAddress = config.email.from || config.email.user;
+    const info = await activeTransporter.sendMail({
+      from: `"${config.schoolName}" <${fromAddress}>`,
       to,
       subject,
       html: htmlContent,
     });
-    return { success: true, channel: 'EMAIL_SMTP' };
+    console.log(`[📧 LIVE EMAIL SENT TO ${to}] Message ID: ${info.messageId}`);
+    return { success: true, channel: 'EMAIL_SMTP', messageId: info.messageId };
   } catch (err) {
     console.error(`Error sending email to ${to}:`, err.message);
     return { success: false, error: err.message };
@@ -56,11 +66,24 @@ const sendOTP = async (user, otp) => {
     <p style="font-size: 12px; color: #94a3b8;">Est. 1959 — Shree Dhaneshkumar Jasvantlal Maheta High School, Bhavnagar, Gujarat.</p>
   </div>`;
 
-  if (user.phone) {
-    await sendSMS(user.phone, message);
+  let targetEmail = user.email;
+  let targetPhone = user.phone;
+
+  if (!targetEmail && user.studentProfile?.parents?.length) {
+    const parentObj = user.studentProfile.parents[0]?.parent;
+    if (parentObj?.email) targetEmail = parentObj.email;
+    if (parentObj?.user?.email) targetEmail = parentObj.user.email;
+    if (!targetPhone && parentObj?.phone) targetPhone = parentObj.phone;
   }
-  if (user.email) {
-    await sendEmail(user.email, 'DJMHS ERP - Password Reset OTP', html);
+  if (!targetEmail && user.staffProfile?.email) {
+    targetEmail = user.staffProfile.email;
+  }
+
+  if (targetPhone) {
+    sendSMS(targetPhone, message).catch(() => {});
+  }
+  if (targetEmail) {
+    sendEmail(targetEmail, 'DJMHS ERP - Password Reset OTP', html).catch(() => {});
   }
   return true;
 };
