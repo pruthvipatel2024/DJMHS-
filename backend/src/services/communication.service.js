@@ -12,6 +12,9 @@ const getTransporter = () => {
       host: config.email.host || 'smtp.gmail.com',
       port: config.email.port || 587,
       secure: config.email.port === 465,
+      connectionTimeout: 5000,
+      greetingTimeout: 5000,
+      socketTimeout: 10000,
       auth: {
         user: config.email.user,
         pass: config.email.pass,

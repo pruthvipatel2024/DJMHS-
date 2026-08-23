@@ -36,15 +36,15 @@ const requestStudentOtp = async (grNumber, parentContact = {}) => {
     lastSentAt: now,
   });
 
-  // Dispatch OTP to parent email/phone if provided
+  // Non-blocking dispatch of OTP to parent email/phone if provided
   const { phone, email, studentName } = parentContact;
   const message = `DJMHS High School Portal OTP: ${plainOtp}. Valid for 5 minutes. Do not share this OTP with anyone.`;
 
   if (phone) {
-    await sendSMS(phone, message);
+    sendSMS(phone, message).catch((e) => console.error('SMS dispatch note:', e.message));
   }
   if (email) {
-    await sendEmail(email, 'DJMHS Student Portal Login Verification OTP', `<p>Hello,<br/>Your login OTP for student <strong>${studentName || grNumber}</strong> is <strong>${plainOtp}</strong>.<br/>This OTP is valid for 5 minutes.</p>`);
+    sendEmail(email, 'DJMHS Student Portal Login Verification OTP', `<p>Hello,<br/>Your login OTP for student <strong>${studentName || grNumber}</strong> is <strong>${plainOtp}</strong>.<br/>This OTP is valid for 5 minutes.</p>`).catch((e) => console.error('Email dispatch note:', e.message));
   }
 
   return true;
