@@ -77,7 +77,8 @@ const LoginPage: React.FC = () => {
       setOtpSent(true);
       setSuccessMessage(res.data.message);
     } catch (err: any) {
-      setErrorMessage(err.response?.data?.message || 'Unable to dispatch OTP. Please check GR number.');
+      const serverMsg = err.response?.data?.message || err.response?.data?.error || (typeof err.response?.data === 'string' ? err.response.data : err.message);
+      setErrorMessage(serverMsg || 'Unable to dispatch OTP. Please check GR number.');
     } finally {
       setIsSubmitting(false);
     }
@@ -97,7 +98,8 @@ const LoginPage: React.FC = () => {
       login(token, user, true);
       navigate('/portal');
     } catch (err: any) {
-      setErrorMessage(err.response?.data?.message || 'Invalid or expired OTP code.');
+      const serverMsg = err.response?.data?.message || err.response?.data?.error || (typeof err.response?.data === 'string' ? err.response.data : err.message);
+      setErrorMessage(serverMsg || 'Invalid or expired OTP code.');
     } finally {
       setIsSubmitting(false);
     }
