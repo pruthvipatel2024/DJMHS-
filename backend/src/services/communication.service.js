@@ -4,7 +4,7 @@ const config = require('../config');
 let transporter = null;
 
 const getTransporter = () => {
-  if (process.env.MOCK_COMMUNICATIONS_TO_LOG === 'true') {
+  if (config.email.mock) {
     return null;
   }
   if (!transporter && config.email.user && config.email.pass) {
@@ -12,9 +12,9 @@ const getTransporter = () => {
       host: config.email.host || 'smtp.gmail.com',
       port: config.email.port || 587,
       secure: config.email.port === 465,
-      connectionTimeout: 5000,
-      greetingTimeout: 5000,
-      socketTimeout: 10000,
+      connectionTimeout: 8000,
+      greetingTimeout: 8000,
+      socketTimeout: 12000,
       auth: {
         user: config.email.user,
         pass: config.email.pass,
@@ -26,7 +26,7 @@ const getTransporter = () => {
 
 const sendSMS = async (to, message) => {
   const activeTransporter = getTransporter();
-  if (process.env.MOCK_COMMUNICATIONS_TO_LOG === 'true' || !activeTransporter) {
+  if (config.email.mock || !activeTransporter) {
     console.log(`[📱 MOCK SMS TO ${to}]: ${message}`);
     return { success: true, channel: 'SMS_MOCK' };
   }
@@ -37,7 +37,7 @@ const sendSMS = async (to, message) => {
 
 const sendEmail = async (to, subject, htmlContent) => {
   const activeTransporter = getTransporter();
-  if (process.env.MOCK_COMMUNICATIONS_TO_LOG === 'true' || !activeTransporter) {
+  if (config.email.mock || !activeTransporter) {
     console.log(`[📧 MOCK EMAIL TO ${to}] | SUBJECT: ${subject}\n--- CONTENT ---\n${htmlContent.replace(/<[^>]*>?/gm, '')}`);
     return { success: true, channel: 'EMAIL_MOCK' };
   }
