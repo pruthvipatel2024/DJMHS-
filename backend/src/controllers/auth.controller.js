@@ -422,6 +422,9 @@ const requestStudentOtpController = async (req, res, next) => {
       message: `Verification OTP dispatched to registered guardian contact (${contact.email || contact.phone || 'Email/SMS'}). Valid for 5 minutes.`,
     });
   } catch (err) {
+    if (err.message && err.message.includes('Please wait')) {
+      return res.status(429).json({ success: false, error: 'Rate Limit Cooldown', message: err.message });
+    }
     next(err);
   }
 };
