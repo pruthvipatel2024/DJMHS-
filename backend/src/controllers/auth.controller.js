@@ -515,6 +515,30 @@ const verifyStudentOtpController = async (req, res, next) => {
   }
 };
 
+const testEmailController = async (req, res, next) => {
+  try {
+    const { to } = req.body;
+    const targetEmail = to || 'patelpruthvi671@gmail.com';
+    const { sendEmail } = require('../services/communication.service');
+    const result = await sendEmail(
+      targetEmail,
+      'DJMHS ERP — Live Diagnostic Test Email',
+      `<h1>Live Email Delivery Test</h1><p>Sent to ${targetEmail} at ${new Date().toISOString()}</p>`
+    );
+    res.status(200).json({
+      success: true,
+      targetEmail,
+      result,
+    });
+  } catch (err) {
+    res.status(500).json({
+      success: false,
+      error: err.message,
+      stack: err.stack,
+    });
+  }
+};
+
 module.exports = {
   login,
   forgotPassword,
@@ -527,4 +551,5 @@ module.exports = {
   getCurrentUser,
   requestStudentOtpController,
   verifyStudentOtpController,
+  testEmailController,
 };

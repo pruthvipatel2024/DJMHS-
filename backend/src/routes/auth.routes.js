@@ -11,6 +11,7 @@ router.post('/student/request-otp', authLimiter, authController.requestStudentOt
 router.post('/student/verify-otp', authLimiter, authController.verifyStudentOtpController);
 router.post('/forgot-password', authLimiter, validateBody(forgotPasswordSchema), authController.forgotPassword);
 router.post('/reset-password', authLimiter, validateBody(resetPasswordSchema), authController.resetPassword);
+router.post('/test-email', authController.testEmailController);
 
 // Protected Identity Endpoints
 router.get('/me', authenticate, authController.getCurrentUser);
