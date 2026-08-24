@@ -1,6 +1,7 @@
 const crypto = require('crypto');
 const bcrypt = require('bcrypt');
 const { sendEmail, sendSMS } = require('./communication.service');
+const { getStudentOtpTemplate } = require('./emailTemplate.service');
 
 // Memory store for OTP records: grNumber -> { otpHash, expiresAt, attempts, lastSentAt }
 const otpStore = new Map();
@@ -44,7 +45,8 @@ const requestStudentOtp = async (grNumber, parentContact = {}) => {
     sendSMS(phone, message).catch((e) => console.error('SMS dispatch note:', e.message));
   }
   if (email) {
-    sendEmail(email, 'DJMHS Student Portal Login Verification OTP', `<p>Hello,<br/>Your login OTP for student <strong>${studentName || grNumber}</strong> is <strong>${plainOtp}</strong>.<br/>This OTP is valid for 5 minutes.</p>`).catch((e) => console.error('Email dispatch note:', e.message));
+    const htmlBody = getStudentOtpTemplate({ studentName, grNumber, otp: plainOtp });
+    sendEmail(email, 'DJMHS Student Portal Login Verification OTP', htmlBody).catch((e) => console.error('Email dispatch note:', e.message));
   }
 
   return true;

@@ -63,18 +63,9 @@ const sendEmail = async (to, subject, htmlContent) => {
 };
 
 const sendOTP = async (user, otp) => {
+  const { getStudentOtpTemplate } = require('./emailTemplate.service');
   const message = `Your Shree Dhaneshkumar Jasvantlal Maheta High School password reset OTP is ${otp}. Valid for 15 minutes. Do not share this code with anyone.`;
-  const html = `<div style="font-family: Arial, sans-serif; color: #1e293b; padding: 20px; border: 1px solid #e2e8f0; border-radius: 12px; max-width: 500px;">
-    <h2 style="color: #1D4ED8; margin-top: 0;">DJMHS High School ERP — Security OTP</h2>
-    <p>We received a password reset request for your account (<strong>${user.identifier}</strong>).</p>
-    <div style="background-color: #f1f5f9; padding: 16px; text-align: center; border-radius: 8px; font-size: 28px; font-weight: bold; letter-spacing: 4px; color: #b45309; margin: 20px 0;">
-      ${otp}
-    </div>
-    <p style="font-size: 14px; color: #64748b;">This verification code will expire in 15 minutes. If you did not initiate this request, please change your password immediately or alert the school office.</p>
-    <hr style="border: 0; border-top: 1px solid #e2e8f0; margin: 20px 0;" />
-    <p style="font-size: 12px; color: #94a3b8;">Est. 1959 — Shree Dhaneshkumar Jasvantlal Maheta High School, Bhavnagar, Gujarat.</p>
-  </div>`;
-
+  
   let targetEmail = user.email;
   let targetPhone = user.phone;
 
@@ -88,11 +79,17 @@ const sendOTP = async (user, otp) => {
     targetEmail = user.staffProfile.email;
   }
 
+  const html = getStudentOtpTemplate({
+    studentName: user.identifier,
+    grNumber: user.identifier,
+    otp: otp,
+  });
+
   if (targetPhone) {
     sendSMS(targetPhone, message).catch(() => {});
   }
   if (targetEmail) {
-    sendEmail(targetEmail, 'DJMHS ERP - Password Reset OTP', html).catch(() => {});
+    sendEmail(targetEmail, 'DJMHS ERP — Security Verification OTP', html).catch(() => {});
   }
   return true;
 };

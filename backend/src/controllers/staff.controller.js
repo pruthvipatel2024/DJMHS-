@@ -1,6 +1,7 @@
 const prisma = require('../config/db');
 const { hashPassword } = require('../utils/password.utils');
 const { sendEmail, sendSMS } = require('../services/communication.service');
+const { getStaffOnboardingTemplate } = require('../services/emailTemplate.service');
 const { parseStaffBulkImport, exportToExcel } = require('../services/excel.service');
 const { uploadMediaAsset } = require('../services/cloudinary.service');
 const fs = require('fs');
@@ -222,12 +223,20 @@ const createStaff = async (req, res, next) => {
       });
     });
 
-    // Non-blocking notification dispatch
+    // Non-blocking notification dispatch with HTML email template
     if (phone) {
       sendSMS(phone, `Welcome to DJMHS High School! Your Faculty Portal ID is ${email || empId} and password is ${defaultPassword}. Please change password on first login.`).catch(() => {});
     }
     if (email) {
-      sendEmail(email, 'DJMHS High School - Faculty Onboarding Credentials', `<p>Welcome <strong>${firstName} ${lastName}</strong> to DJMHS High School Faculty team. Login identifier: <strong>${email}</strong> | Password: <strong>${defaultPassword}</strong></p>`).catch(() => {});
+      const htmlBody = getStaffOnboardingTemplate({
+        staffName: `${firstName} ${lastName}`,
+        empId,
+        designation: validDesignation,
+        department: newStaff.department?.name || 'Commerce Department',
+        email,
+        initialPassword: defaultPassword,
+      });
+      sendEmail(email, 'DJMHS High School — Faculty Onboarding Credentials', htmlBody).catch(() => {});
     }
 
     res.status(201).json({

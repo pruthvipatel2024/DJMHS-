@@ -1,6 +1,7 @@
 const prisma = require('../config/db');
 const { hashPassword } = require('../utils/password.utils');
 const { sendEmail, sendSMS } = require('../services/communication.service');
+const { getStudentAdmissionTemplate } = require('../services/emailTemplate.service');
 const { parseStudentBulkImport, exportToExcel } = require('../services/excel.service');
 const { uploadMediaAsset } = require('../services/cloudinary.service');
 const fs = require('fs');
@@ -312,12 +313,21 @@ const createStudent = async (req, res, next) => {
         `DJMHS High School Admission Confirmed for ${firstName} ${lastName}! GR No: ${grNumber}. Parent Portal Login ID: ${parentEmail || parentPhone}, Password: ${defaultPassword}.`
       ).catch(() => {});
     }
-    if (parentEmail && result.isNewParent) {
+    if (parentEmail) {
+      const htmlBody = getStudentAdmissionTemplate({
+        studentName: `${firstName} ${lastName}`,
+        grNumber,
+        standardName: targetDiv?.standard?.name || 'Commerce Stream',
+        divisionName: targetDiv?.name || 'A',
+        parentName: parentFirstName ? `${parentFirstName} ${parentLastName || ''}` : 'Parent/Guardian',
+        loginIdentifier: parentEmail || grNumber,
+        initialPassword: defaultPassword,
+      });
       sendEmail(
         parentEmail,
-        'DJMHS High School - Student Admission & Parent Portal Credentials',
-        `<p>Welcome to <strong>Shree Dhaneshkumar Jasvantlal Maheta High School</strong>. Admission confirmed for your child <strong>${firstName} ${lastName}</strong> (GR No: ${grNumber}).<br/>Parent Portal Login: <strong>${parentEmail || parentPhone}</strong> | Password: <strong>${defaultPassword}</strong>.</p>`
-      ).catch(() => {});
+        'DJMHS High School — Student Admission & Parent Portal Access Credentials',
+        htmlBody
+      ).catch((e) => console.error('Admission Email Error:', e.message));
     }
 
     res.status(201).json({
