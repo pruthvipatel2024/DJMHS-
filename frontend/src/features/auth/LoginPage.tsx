@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useForm } from 'react-hook-form';
 import { z } from 'zod';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -35,6 +35,17 @@ const LoginPage: React.FC = () => {
   const [grNumber, setGrNumber] = useState('');
   const [otp, setOtp] = useState('');
   const [otpSent, setOtpSent] = useState(false);
+  const [cooldownSeconds, setCooldownSeconds] = useState(0);
+
+  useEffect(() => {
+    let timer: any;
+    if (cooldownSeconds > 0) {
+      timer = setInterval(() => {
+        setCooldownSeconds((prev) => prev - 1);
+      }, 1000);
+    }
+    return () => clearInterval(timer);
+  }, [cooldownSeconds]);
 
   const {
     register,
@@ -70,15 +81,36 @@ const LoginPage: React.FC = () => {
       setErrorMessage('Please enter your Student GR Number.');
       return;
     }
+    if (cooldownSeconds > 0) {
+      setErrorMessage(`Please wait ${cooldownSeconds} seconds before requesting a new OTP.`);
+      return;
+    }
+
     setIsSubmitting(true);
     setErrorMessage(null);
     try {
       const res = await api.post('/auth/student/request-otp', { grNumber: grNumber.trim() });
       setOtpSent(true);
-      setSuccessMessage(res.data.message);
+      setSuccessMessage(res.data.message || 'OTP sent successfully.');
+      setCooldownSeconds(60);
     } catch (err: any) {
-      const serverMsg = err.response?.data?.message || err.response?.data?.error || (typeof err.response?.data === 'string' ? err.response.data : err.message);
-      setErrorMessage(serverMsg || 'Unable to dispatch OTP. Please check GR number.');
+      const code = err.response?.data?.code;
+      const msg = err.response?.data?.message;
+
+      if (code === 'STUDENT_NOT_FOUND') {
+        setErrorMessage('No student account was found for this GR number.');
+      } else if (code === 'NO_REGISTERED_CONTACT') {
+        setErrorMessage('No registered parent contact is available. Please contact the school office.');
+      } else if (code === 'RATE_LIMIT_COOLDOWN') {
+        setErrorMessage(msg || 'Please wait 60 seconds before requesting a new OTP.');
+        if (err.response?.data?.secondsRemaining) {
+          setCooldownSeconds(err.response.data.secondsRemaining);
+        }
+      } else if (code === 'OTP_DELIVERY_FAILED') {
+        setErrorMessage('OTP service is temporarily unavailable. Please try again later.');
+      } else {
+        setErrorMessage(msg || 'Unable to dispatch OTP. Please verify GR number.');
+      }
     } finally {
       setIsSubmitting(false);
     }
@@ -98,8 +130,20 @@ const LoginPage: React.FC = () => {
       login(token, user, true);
       navigate('/portal');
     } catch (err: any) {
-      const serverMsg = err.response?.data?.message || err.response?.data?.error || (typeof err.response?.data === 'string' ? err.response.data : err.message);
-      setErrorMessage(serverMsg || 'Invalid or expired OTP code.');
+      const code = err.response?.data?.code;
+      const msg = err.response?.data?.message;
+
+      if (code === 'EXPIRED_OTP') {
+        setErrorMessage('This OTP has expired. Please request a new OTP.');
+      } else if (code === 'INVALID_OTP') {
+        setErrorMessage(msg || 'Incorrect OTP. Please check and try again.');
+      } else if (code === 'MAX_ATTEMPTS_EXCEEDED') {
+        setErrorMessage('Too many verification attempts. Please request a new OTP.');
+        setOtpSent(false);
+        setOtp('');
+      } else {
+        setErrorMessage(msg || 'Invalid or expired OTP code.');
+      }
     } finally {
       setIsSubmitting(false);
     }
@@ -290,10 +334,14 @@ const LoginPage: React.FC = () => {
                 {!otpSent ? (
                   <button
                     type="submit"
-                    disabled={isSubmitting}
-                    className="w-full py-3.5 px-4 bg-primary-600 hover:bg-primary-700 text-white font-bold rounded-xl shadow-md transition flex items-center justify-center gap-2"
+                    disabled={isSubmitting || cooldownSeconds > 0}
+                    className="w-full py-3.5 px-4 bg-primary-600 hover:bg-primary-700 disabled:bg-slate-400 text-white font-bold rounded-xl shadow-md transition flex items-center justify-center gap-2"
                   >
-                    {isSubmitting ? 'Requesting OTP...' : 'Request Login OTP'}
+                    {isSubmitting
+                      ? 'Requesting OTP...'
+                      : cooldownSeconds > 0
+                      ? `Resend OTP in ${cooldownSeconds}s`
+                      : 'Request Login OTP'}
                     <ArrowRight className="w-4 h-4" />
                   </button>
                 ) : (
@@ -301,18 +349,31 @@ const LoginPage: React.FC = () => {
                     <button
                       type="submit"
                       disabled={isSubmitting}
-                      className="w-full py-3.5 px-4 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl shadow-md transition flex items-center justify-center gap-2"
+                      className="w-full py-3.5 px-4 bg-emerald-600 hover:bg-emerald-700 disabled:bg-slate-400 text-white font-bold rounded-xl shadow-md transition flex items-center justify-center gap-2"
                     >
                       {isSubmitting ? 'Verifying OTP...' : 'Verify OTP & Sign In'}
                       <ShieldCheck className="w-4 h-4" />
                     </button>
-                    <button
-                      type="button"
-                      onClick={() => setOtpSent(false)}
-                      className="w-full py-2 text-xs font-bold text-slate-500 hover:text-slate-800"
-                    >
-                      Change GR Number
-                    </button>
+                    <div className="flex items-center justify-between text-xs pt-1">
+                      <button
+                        type="button"
+                        onClick={(e) => handleRequestStudentOtp(e)}
+                        disabled={cooldownSeconds > 0 || isSubmitting}
+                        className="font-semibold text-primary-600 hover:text-primary-800 disabled:text-slate-400"
+                      >
+                        {cooldownSeconds > 0 ? `Resend OTP in ${cooldownSeconds}s` : 'Resend OTP'}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setOtpSent(false);
+                          setOtp('');
+                        }}
+                        className="font-bold text-slate-500 hover:text-slate-800"
+                      >
+                        Change GR Number
+                      </button>
+                    </div>
                   </div>
                 )}
               </form>

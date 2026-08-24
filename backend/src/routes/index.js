@@ -15,6 +15,7 @@ const reportRoutes = require('./report.routes');
 const settingsRoutes = require('./settings.routes');
 const crmRoutes = require('./crm.routes');
 const uploadRoutes = require('./upload.routes');
+const adminRoutes = require('./admin.routes');
 
 // API Root Index Endpoint
 router.get('/', (req, res) => {
@@ -25,6 +26,7 @@ router.get('/', (req, res) => {
     status: 'ONLINE',
     endpoints: {
       auth: '/api/auth',
+      admin: '/api/admin',
       dashboard: '/api/dashboard',
       staff: '/api/staff',
       students: '/api/students',
@@ -41,6 +43,7 @@ router.get('/', (req, res) => {
 
 // Mount Modules
 router.use('/auth', authRoutes);
+router.use('/admin', adminRoutes);
 router.use('/dashboard', dashboardRoutes);
 router.use('/staff', staffRoutes);
 router.use('/students', studentRoutes);

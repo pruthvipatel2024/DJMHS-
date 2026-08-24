@@ -868,3 +868,18 @@ model ImportJob {
   createdAt      DateTime     @default(now())
   updatedAt      DateTime     @updatedAt
 }
+
+model StudentOtp {
+  id         String    @id @default(uuid())
+  grNumber   String    @unique
+  otpHash    String
+  expiresAt  DateTime
+  attempts   Int       @default(0)
+  lastSentAt DateTime  @default(now())
+  consumedAt DateTime?
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+
+  @@index([grNumber])
+  @@index([expiresAt])
+}

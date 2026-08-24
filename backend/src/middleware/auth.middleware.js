@@ -50,8 +50,11 @@ const authenticate = async (req, res, next) => {
       });
     }
 
-    // Check enforced password change on first login (except for change password endpoint itself)
-    if (user.isFirstLogin && !req.originalUrl.includes('/change-password') && !req.originalUrl.includes('/logout')) {
+    // Check enforced password change on first login for Staff (Admin/Teacher) only
+    const roleName = user.role?.name;
+    const isStaffRole = roleName === 'ADMIN' || roleName === 'TEACHER';
+
+    if (user.isFirstLogin && isStaffRole && !req.originalUrl.includes('/change-password') && !req.originalUrl.includes('/logout')) {
       return res.status(403).json({
         success: false,
         error: 'First Login Password Change Required',

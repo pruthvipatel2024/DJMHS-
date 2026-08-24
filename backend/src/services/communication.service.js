@@ -4,33 +4,33 @@ const config = require('../config');
 let transporter = null;
 
 const getTransporter = () => {
-  if (config.email.mock) {
-    return null;
-  }
-  if (!transporter && config.email.user && config.email.pass) {
+  const smtpUser = process.env.SMTP_USER || config.email.user || 'rtobvn8191@gmail.com';
+  const smtpPass = process.env.SMTP_PASS || config.email.pass || 'akrphoqajxdsjqer';
+  const smtpHost = process.env.SMTP_HOST || config.email.host || 'smtp.gmail.com';
+
+  if (!transporter) {
     transporter = nodemailer.createTransport({
-      host: config.email.host || 'smtp.gmail.com',
-      port: parseInt(config.email.port, 10) || 587,
-      secure: false, // Must be false for 587 STARTTLS
+      host: smtpHost,
+      port: 587,
+      secure: false, // STARTTLS for port 587
       requireTLS: true,
       auth: {
-        user: config.email.user,
-        pass: config.email.pass,
+        user: smtpUser,
+        pass: smtpPass,
       },
       tls: {
         rejectUnauthorized: false,
       },
-      connectionTimeout: 10000,
-      greetingTimeout: 10000,
-      socketTimeout: 15000,
+      connectionTimeout: 15000,
+      greetingTimeout: 15000,
+      socketTimeout: 20000,
     });
   }
   return transporter;
 };
 
 const sendSMS = async (to, message) => {
-  const activeTransporter = getTransporter();
-  if (config.email.mock || !activeTransporter) {
+  if (process.env.MOCK_COMMUNICATIONS_TO_LOG === 'true') {
     console.log(`[📱 MOCK SMS TO ${to}]: ${message}`);
     return { success: true, channel: 'SMS_MOCK' };
   }
@@ -41,23 +41,24 @@ const sendSMS = async (to, message) => {
 
 const sendEmail = async (to, subject, htmlContent) => {
   const activeTransporter = getTransporter();
-  if (config.email.mock || !activeTransporter) {
-    console.log(`[📧 MOCK EMAIL TO ${to}] | SUBJECT: ${subject}\n--- CONTENT ---\n${htmlContent.replace(/<[^>]*>?/gm, '')}`);
+  const smtpUser = process.env.SMTP_USER || config.email.user || 'rtobvn8191@gmail.com';
+
+  if (process.env.MOCK_COMMUNICATIONS_TO_LOG === 'true') {
+    console.log(`[📧 MOCK EMAIL TO ${to}] | SUBJECT: ${subject}`);
     return { success: true, channel: 'EMAIL_MOCK' };
   }
 
   try {
-    const fromAddress = config.email.from || config.email.user;
     const info = await activeTransporter.sendMail({
-      from: `"${config.schoolName}" <${fromAddress}>`,
+      from: `"${config.schoolName}" <${smtpUser}>`,
       to,
       subject,
       html: htmlContent,
     });
-    console.log(`[📧 LIVE EMAIL SENT TO ${to}] Message ID: ${info.messageId}`);
+    console.log(`[📧 LIVE EMAIL DISPATCH SUCCESS] Sent to ${to} | Message ID: ${info.messageId}`);
     return { success: true, channel: 'EMAIL_SMTP', messageId: info.messageId };
   } catch (err) {
-    console.error(`Error sending email to ${to}:`, err.message);
+    console.error(`❌ [LIVE EMAIL DISPATCH FAILED] Error sending to ${to}:`, err.message);
     return { success: false, error: err.message };
   }
 };

@@ -5,9 +5,14 @@ import api from '../../services/api';
 import LoadingSkeleton from '../../components/States/LoadingSkeleton';
 import { useTranslation } from 'react-i18next';
 import CrmService from '../../services/crm.service';
+import { useAuth } from '../auth/AuthContext';
 
 const AnnouncementsPage: React.FC = () => {
   const { t } = useTranslation();
+  const { user } = useAuth();
+  const userRole = typeof user?.role === 'string' ? user.role : (user?.role?.name || '');
+  const isStaff = userRole === 'ADMIN' || userRole === 'TEACHER';
+
   const [notices, setNotices] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   
@@ -96,78 +101,80 @@ const AnnouncementsPage: React.FC = () => {
         </div>
       )}
 
-      {/* Broadcast Form Panel */}
-      <div className="bg-gradient-to-br from-primary-900 via-primary-800 to-indigo-900 text-white rounded-2xl p-6 shadow-xl border border-primary-600 space-y-5">
-        <div className="border-b border-primary-700/60 pb-3">
-          <span className="text-[10px] font-black uppercase bg-accent-400 text-slate-900 px-2.5 py-0.5 rounded tracking-wider">
-            <Megaphone className="w-3.5 h-3.5 inline mr-1" /> {t('broadcast_console_tag')}
-          </span>
-          <h2 className="text-2xl font-black text-white mt-1.5">{t('publish_notice_title')}</h2>
-          <p className="text-xs text-primary-200">{t('publish_notice_subtitle')}</p>
-        </div>
+      {/* Broadcast Form Panel (Staff Only) */}
+      {isStaff && (
+        <div className="bg-gradient-to-br from-primary-900 via-primary-800 to-indigo-900 text-white rounded-2xl p-6 shadow-xl border border-primary-600 space-y-5">
+          <div className="border-b border-primary-700/60 pb-3">
+            <span className="text-[10px] font-black uppercase bg-accent-400 text-slate-900 px-2.5 py-0.5 rounded tracking-wider">
+              <Megaphone className="w-3.5 h-3.5 inline mr-1" /> {t('broadcast_console_tag')}
+            </span>
+            <h2 className="text-2xl font-black text-white mt-1.5">{t('publish_notice_title')}</h2>
+            <p className="text-xs text-primary-200">{t('publish_notice_subtitle')}</p>
+          </div>
 
-        <form onSubmit={handleBroadcast} className="space-y-4 text-xs">
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <div className="md:col-span-2">
-              <label className="block text-accent-300 font-black uppercase mb-1">{t('circular_title_label')}</label>
-              <input
-                type="text"
-                required
-                placeholder="e.g. Annual Sports Day Celebration & Practice Schedule"
-                value={title}
-                onChange={(e) => setTitle(e.target.value)}
-                className="w-full p-3 rounded-xl bg-white text-slate-900 font-extrabold text-xs focus:outline-none focus:ring-2 focus:ring-accent-400"
-              />
+          <form onSubmit={handleBroadcast} className="space-y-4 text-xs">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div className="md:col-span-2">
+                <label className="block text-accent-300 font-black uppercase mb-1">{t('circular_title_label')}</label>
+                <input
+                  type="text"
+                  required
+                  placeholder="e.g. Annual Sports Day Celebration & Practice Schedule"
+                  value={title}
+                  onChange={(e) => setTitle(e.target.value)}
+                  className="w-full p-3 rounded-xl bg-white text-slate-900 font-extrabold text-xs focus:outline-none focus:ring-2 focus:ring-accent-400"
+                />
+              </div>
+
+              <div>
+                <label className="block text-accent-300 font-black uppercase mb-1">{t('target_audience_label')}</label>
+                <select
+                  value={targetAudience}
+                  onChange={(e) => setTargetAudience(e.target.value)}
+                  className="w-full p-3 rounded-xl bg-white text-slate-900 font-black text-xs cursor-pointer focus:outline-none"
+                >
+                  <option value="ALL">All Portals (Staff, Parents & Students)</option>
+                  <option value="TEACHER">Staff & Faculty Members Only</option>
+                  <option value="STUDENT_PARENT">Students & Registered Parents Only</option>
+                </select>
+              </div>
             </div>
 
             <div>
-              <label className="block text-accent-300 font-black uppercase mb-1">{t('target_audience_label')}</label>
-              <select
-                value={targetAudience}
-                onChange={(e) => setTargetAudience(e.target.value)}
-                className="w-full p-3 rounded-xl bg-white text-slate-900 font-black text-xs cursor-pointer focus:outline-none"
-              >
-                <option value="ALL">All Portals (Staff, Parents & Students)</option>
-                <option value="TEACHER">Staff & Faculty Members Only</option>
-                <option value="STUDENT_PARENT">Students & Registered Parents Only</option>
-              </select>
-            </div>
-          </div>
-
-          <div>
-            <label className="block text-accent-300 font-black uppercase mb-1">{t('notice_body_label')}</label>
-            <textarea
-              required
-              rows={3}
-              placeholder="Enter comprehensive instructions for the circular..."
-              value={content}
-              onChange={(e) => setContent(e.target.value)}
-              className="w-full p-3 rounded-xl bg-white text-slate-900 font-semibold text-xs focus:outline-none"
-            />
-          </div>
-
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pt-2 border-t border-primary-700/60">
-            <label className="flex items-center gap-2 cursor-pointer select-none font-extrabold text-white text-xs">
-              <input
-                type="checkbox"
-                checked={sendSMSAlert}
-                onChange={(e) => setSendSMSAlert(e.target.checked)}
-                className="w-4 h-4 rounded text-accent-500 focus:ring-accent-400"
+              <label className="block text-accent-300 font-black uppercase mb-1">{t('notice_body_label')}</label>
+              <textarea
+                required
+                rows={3}
+                placeholder="Enter comprehensive instructions for the circular..."
+                value={content}
+                onChange={(e) => setContent(e.target.value)}
+                className="w-full p-3 rounded-xl bg-white text-slate-900 font-semibold text-xs focus:outline-none"
               />
-              <span>{t('trigger_sms_label')}</span>
-            </label>
+            </div>
 
-            <button
-              type="submit"
-              disabled={submitting || !title || !content}
-              className="px-8 py-3 rounded-xl bg-accent-400 hover:bg-accent-500 text-slate-900 font-black text-xs transition shadow-lg flex items-center justify-center gap-2 disabled:opacity-50"
-            >
-              <Send className="w-4 h-4 text-slate-900" />
-              {submitting ? 'Broadcasting Notice...' : t('publish_circular_btn')}
-            </button>
-          </div>
-        </form>
-      </div>
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pt-2 border-t border-primary-700/60">
+              <label className="flex items-center gap-2 cursor-pointer select-none font-extrabold text-white text-xs">
+                <input
+                  type="checkbox"
+                  checked={sendSMSAlert}
+                  onChange={(e) => setSendSMSAlert(e.target.checked)}
+                  className="w-4 h-4 rounded text-accent-500 focus:ring-accent-400"
+                />
+                <span>{t('trigger_sms_label')}</span>
+              </label>
+
+              <button
+                type="submit"
+                disabled={submitting || !title || !content}
+                className="px-8 py-3 rounded-xl bg-accent-400 hover:bg-accent-500 text-slate-900 font-black text-xs transition shadow-lg flex items-center justify-center gap-2 disabled:opacity-50"
+              >
+                <Send className="w-4 h-4 text-slate-900" />
+                {submitting ? 'Broadcasting Notice...' : t('publish_circular_btn')}
+              </button>
+            </div>
+          </form>
+        </div>
+      )}
 
       <DataTable
         title={t('published_circular_title')}

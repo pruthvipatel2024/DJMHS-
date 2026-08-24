@@ -69,26 +69,42 @@ app.get('/', (req, res) => {
 
 // Health check diagnostic endpoint
 app.get('/health', (req, res) => {
-  const config = require('./config');
-  res.status(200).json({
-    success: true,
-    institution: "Shree Dhaneshkumar Jasvantlal Maheta High School ERP",
-    established: "1959",
-    status: "ONLINE",
-    postgres: "CONNECTED",
-    mongoSubsystem: getMongoStatus(),
-    cloudinary: isCloudinaryConfigured() ? "CONFIGURED" : "NOT_CONFIGURED",
-    emailDiagnostics: {
-      mockMode: config.email.mock,
-      smtpHost: config.email.host,
-      smtpPort: config.email.port,
-      smtpUserProvided: !!config.email.user,
-      smtpPassProvided: !!config.email.pass,
-      userDomain: config.email.user ? config.email.user.split('@')[1] : null,
-      fromAddress: config.email.from,
-    },
-    timestamp: new Date().toISOString(),
-  });
+  try {
+    const config = require('./config');
+    let mongoState = 'DISCONNECTED';
+    try {
+      mongoState = getMongoStatus();
+    } catch (e) {
+      mongoState = 'NOT_CONFIGURED';
+    }
+
+    res.status(200).json({
+      success: true,
+      institution: "Shree Dhaneshkumar Jasvantlal Maheta High School ERP",
+      established: "1959",
+      status: "ONLINE",
+      postgres: "CONNECTED",
+      mongoSubsystem: mongoState,
+      cloudinary: isCloudinaryConfigured() ? "CONFIGURED" : "NOT_CONFIGURED",
+      emailDiagnostics: {
+        mockMode: config.email.mock,
+        smtpHost: config.email.host,
+        smtpPort: config.email.port,
+        smtpUserProvided: !!config.email.user,
+        smtpPassProvided: !!config.email.pass,
+        userDomain: config.email.user ? config.email.user.split('@')[1] : null,
+        fromAddress: config.email.from,
+      },
+      timestamp: new Date().toISOString(),
+    });
+  } catch (err) {
+    res.status(200).json({
+      success: true,
+      status: "ONLINE",
+      errorNote: err.message,
+      timestamp: new Date().toISOString(),
+    });
+  }
 });
 
 // Global Exception and 404 Handlers

@@ -375,6 +375,10 @@ const getCurrentUser = async (req, res, next) => {
 
 const requestStudentOtpController = async (req, res, next) => {
   try {
+    const reqId = req.headers['x-request-id'] || `OTP-REQ-${crypto.randomUUID().slice(0, 8)}`;
+    res.setHeader('X-Request-ID', reqId);
+    console.log(`[${reqId}] POST /api/auth/student/request-otp hit`);
+
     const { grNumber } = req.body;
     if (!grNumber) {
       return res.status(400).json({ success: false, error: 'GR Required', message: 'Student General Register (GR) Number is required.' });
@@ -396,34 +400,61 @@ const requestStudentOtpController = async (req, res, next) => {
         deletedAt: null,
       },
       include: {
+        user: true,
         parents: { include: { parent: { include: { user: true } } } },
       },
     });
 
     if (!student) {
+      console.log(`[${reqId}] Student lookup failed for GR "${cleanGr}"`);
       return res.status(404).json({
         success: false,
-        error: 'Student Not Found',
-        message: `No active student found matching GR Number "${cleanGr}". Please verify your GR card.`,
+        code: 'STUDENT_NOT_FOUND',
+        message: 'No student account was found for this GR number.',
       });
     }
 
     const primaryParent = student.parents?.find((p) => p.isPrimary)?.parent || student.parents?.[0]?.parent;
+    const contactEmail = primaryParent?.email || primaryParent?.user?.email || student.user?.email;
+    const contactPhone = primaryParent?.phone || primaryParent?.user?.phone || student.user?.phone;
+
+    if (!contactEmail && !contactPhone) {
+      console.log(`[${reqId}] No parent contact registered for student GR ${student.grNumber}`);
+      return res.status(400).json({
+        success: false,
+        code: 'NO_REGISTERED_CONTACT',
+        message: 'No registered parent contact is available for OTP login.',
+      });
+    }
+
     const contact = {
-      phone: primaryParent?.phone || primaryParent?.user?.phone,
-      email: primaryParent?.email || primaryParent?.user?.email,
+      phone: contactPhone,
+      email: contactEmail,
       studentName: `${student.firstName} ${student.lastName}`,
     };
 
-    await requestStudentOtp(student.grNumber, contact);
+    const otpResult = await requestStudentOtp(student.grNumber, contact, reqId);
 
     res.status(200).json({
       success: true,
-      message: `Verification OTP dispatched to registered guardian contact (${contact.email || contact.phone || 'Email/SMS'}). Valid for 5 minutes.`,
+      message: 'OTP email accepted for delivery.',
+      expiresIn: otpResult.expiresIn || 300,
     });
   } catch (err) {
-    if (err.message && err.message.includes('Please wait')) {
-      return res.status(429).json({ success: false, error: 'Rate Limit Cooldown', message: err.message });
+    if (err.code === 'RATE_LIMIT_COOLDOWN') {
+      return res.status(429).json({
+        success: false,
+        code: 'RATE_LIMIT_COOLDOWN',
+        message: err.message,
+        secondsRemaining: err.secondsRemaining,
+      });
+    }
+    if (err.code === 'OTP_DELIVERY_FAILED') {
+      return res.status(502).json({
+        success: false,
+        code: 'OTP_DELIVERY_FAILED',
+        message: 'Unable to deliver OTP. Please try again later.',
+      });
     }
     next(err);
   }
@@ -431,9 +462,17 @@ const requestStudentOtpController = async (req, res, next) => {
 
 const verifyStudentOtpController = async (req, res, next) => {
   try {
+    const reqId = req.headers['x-request-id'] || `OTP-VERIFY-${crypto.randomUUID().slice(0, 8)}`;
+    res.setHeader('X-Request-ID', reqId);
+    console.log(`[${reqId}] POST /api/auth/student/verify-otp hit`);
+
     const { grNumber, otp } = req.body;
     if (!grNumber || !otp) {
-      return res.status(400).json({ success: false, error: 'Incomplete Request', message: 'GR Number and OTP are required.' });
+      return res.status(400).json({
+        success: false,
+        code: 'INVALID_REQUEST',
+        message: 'GR Number and 6-digit OTP code are required.',
+      });
     }
 
     const cleanGr = String(grNumber).trim();
@@ -454,8 +493,8 @@ const verifyStudentOtpController = async (req, res, next) => {
 
     const canonicalGr = student ? student.grNumber : cleanGr;
 
-    // Verify OTP using secure OTP service
-    await verifyStudentOtp(canonicalGr, otp);
+    // Verify OTP using database-backed OTP service
+    await verifyStudentOtp(canonicalGr, otp, reqId);
 
     // Retrieve Student user account from PostgreSQL
     const user = await prisma.user.findFirst({
@@ -473,7 +512,20 @@ const verifyStudentOtpController = async (req, res, next) => {
     });
 
     if (!user) {
-      return res.status(404).json({ success: false, error: 'User Not Found', message: 'Student user record not found.' });
+      return res.status(404).json({
+        success: false,
+        code: 'USER_NOT_FOUND',
+        message: 'Student user record not found.',
+      });
+    }
+
+    // Set isFirstLogin to false for student/parent OTP logins
+    if (user.isFirstLogin) {
+      await prisma.user.update({
+        where: { id: user.id },
+        data: { isFirstLogin: false },
+      });
+      user.isFirstLogin = false;
     }
 
     // Issue JWT Access & Refresh Token Session
@@ -511,6 +563,14 @@ const verifyStudentOtpController = async (req, res, next) => {
       user,
     });
   } catch (err) {
+    if (['INVALID_OTP', 'EXPIRED_OTP', 'MAX_ATTEMPTS_EXCEEDED', 'NO_ACTIVE_OTP'].includes(err.code)) {
+      return res.status(400).json({
+        success: false,
+        code: err.code,
+        message: err.message,
+        remainingAttempts: err.remainingAttempts,
+      });
+    }
     next(err);
   }
 };

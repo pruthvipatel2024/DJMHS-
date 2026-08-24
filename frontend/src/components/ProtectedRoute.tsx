@@ -28,9 +28,11 @@ const ProtectedRoute: React.FC<ProtectedRouteProps> = ({ children, allowedRoles 
     return <Navigate to="/login" state={{ from: location }} replace />;
   }
 
-  // Enforced first-time login security protocol: if isFirstLogin is true,
-  // we block user interaction and show the FirstTimeChangePasswordModal overlay.
-  if (user.isFirstLogin) {
+  const userRole = typeof user.role === 'string' ? user.role : (user.role?.name || '');
+  const isStaffRole = userRole === 'ADMIN' || userRole === 'TEACHER';
+
+  // Enforced first-time login security protocol for Staff (Admin/Teacher) only:
+  if (user.isFirstLogin && isStaffRole) {
     return (
       <>
         <FirstTimeChangePasswordModal />
@@ -38,8 +40,6 @@ const ProtectedRoute: React.FC<ProtectedRouteProps> = ({ children, allowedRoles 
       </>
     );
   }
-
-  const userRole = typeof user.role === 'string' ? user.role : (user.role?.name || '');
 
   if (allowedRoles && !allowedRoles.includes(userRole)) {
     // User is authenticated but does not have permission for the requested route.

@@ -10,7 +10,10 @@ const FirstTimeChangePasswordModal: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  if (!user || !user.isFirstLogin) return null;
+  const userRole = typeof user?.role === 'string' ? user.role : (user?.role?.name || '');
+  const isStaffRole = userRole === 'ADMIN' || userRole === 'TEACHER';
+
+  if (!user || !user.isFirstLogin || !isStaffRole) return null;
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();

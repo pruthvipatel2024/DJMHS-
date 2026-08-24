@@ -1,17 +1,29 @@
 import React, { useState, useEffect } from 'react';
-import { AlertCircle, CheckCircle2, MessageSquare, ShieldCheck, Clock } from 'lucide-react';
+import { AlertCircle, CheckCircle2, MessageSquare, ShieldCheck, Plus, X, Send, Clock } from 'lucide-react';
 import DataTable, { Column } from '../../components/DataTable/DataTable';
 import api from '../../services/api';
 import LoadingSkeleton from '../../components/States/LoadingSkeleton';
 import { useTranslation } from 'react-i18next';
 import CrmService from '../../services/crm.service';
+import { useAuth } from '../auth/AuthContext';
 
 const ComplaintsPage: React.FC = () => {
   const { t } = useTranslation();
+  const { user } = useAuth();
+  const userRole = typeof user?.role === 'string' ? user.role : (user?.role?.name || '');
+  const isStaff = userRole === 'ADMIN' || userRole === 'TEACHER';
+
   const [tickets, setTickets] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [toastMsg, setToastMsg] = useState<string | null>(null);
   const [showModal, setShowModal] = useState(false);
+
+  // New Complaint Form State
+  const [title, setTitle] = useState('');
+  const [description, setDescription] = useState('');
+  const [category, setCategory] = useState('ACADEMIC');
+  const [priority, setPriority] = useState('NORMAL');
+  const [submitting, setSubmitting] = useState(false);
 
   const fetchTickets = async () => {
     setLoading(true);
@@ -29,6 +41,25 @@ const ComplaintsPage: React.FC = () => {
     fetchTickets();
   }, []);
 
+  const handleCreateComplaint = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!title.trim() || !description.trim()) return;
+    setSubmitting(true);
+    try {
+      await api.post('/crm/complaints', { title, description, category, priority });
+      setToastMsg('Grievance ticket submitted to helpdesk! Tracking ticket generated.');
+      setShowModal(false);
+      setTitle('');
+      setDescription('');
+      fetchTickets();
+    } catch (e: any) {
+      setToastMsg(e.response?.data?.message || 'Failed to submit grievance ticket. Please try again.');
+    } finally {
+      setSubmitting(false);
+      setTimeout(() => setToastMsg(null), 5000);
+    }
+  };
+
   const handleResolve = async (id: string) => {
     try {
       await api.put(`/crm/complaints/${id}`, { status: 'RESOLVED', resolutionNotes: 'Issue fully investigated and corrected by administrative committee.' });
@@ -45,9 +76,14 @@ const ComplaintsPage: React.FC = () => {
       header: t('grievance_category'),
       accessor: (row) => (
         <div className="space-y-1">
-          <span className="px-2 py-0.5 rounded bg-indigo-50 text-indigo-800 text-[10px] font-extrabold uppercase">{row.category}</span>
+          <div className="flex items-center gap-2">
+            <span className="px-2 py-0.5 rounded bg-indigo-50 text-indigo-800 text-[10px] font-extrabold uppercase border border-indigo-200">
+              {row.category?.replace(/_/g, ' ')}
+            </span>
+            <span className="text-[10px] font-bold text-slate-400">#{row.ticketNumber}</span>
+          </div>
           <div className="font-black text-slate-900 text-sm mt-0.5">{row.title}</div>
-          <div className="text-xs text-slate-500 font-medium line-clamp-2 max-w-md">{row.description}</div>
+          <div className="text-xs text-slate-600 font-medium line-clamp-2 max-w-md">{row.description}</div>
         </div>
       ),
     },
@@ -58,7 +94,7 @@ const ComplaintsPage: React.FC = () => {
           <span className={`px-2 py-0.5 rounded text-[10px] font-extrabold uppercase ${row.priority === 'URGENT' || row.priority === 'HIGH' ? 'bg-red-100 text-red-800 font-black' : 'bg-slate-100 text-slate-700'}`}>
             Priority: {row.priority}
           </span>
-          <div className="text-xs font-bold text-slate-700">Source: {row.submittedByType}</div>
+          <div className="text-xs font-bold text-slate-700">Source: {row.submittedByType || 'Portal User'}</div>
           <div className="text-[11px] text-slate-400">Logged: {new Date(row.createdAt).toLocaleDateString()}</div>
         </div>
       ),
@@ -80,6 +116,9 @@ const ComplaintsPage: React.FC = () => {
       accessor: (row) => {
         if (row.status === 'RESOLVED') {
           return <span className="text-emerald-700 font-extrabold text-xs flex items-center gap-1"><ShieldCheck className="w-4 h-4" /> {t('ticket_closed')}</span>;
+        }
+        if (!isStaff) {
+          return <span className="text-amber-700 font-extrabold text-xs flex items-center gap-1"><Clock className="w-4 h-4" /> In Review</span>;
         }
         return (
           <button
@@ -115,10 +154,11 @@ const ComplaintsPage: React.FC = () => {
         </div>
 
         <button
-          onClick={() => alert('Opening Ticket Creation Modal...')}
-          className="px-5 py-2.5 rounded-xl bg-primary-600 hover:bg-primary-700 text-white font-bold text-xs shadow-md shadow-primary-600/30 transition self-end md:self-auto"
+          onClick={() => setShowModal(true)}
+          className="px-5 py-2.5 rounded-xl bg-primary-600 hover:bg-primary-700 text-white font-bold text-xs shadow-md shadow-primary-600/30 transition self-end md:self-auto flex items-center gap-2"
         >
-          {t('log_internal_ticket')}
+          <Plus className="w-4 h-4" />
+          Log New Grievance Ticket
         </button>
       </div>
 
@@ -129,6 +169,104 @@ const ComplaintsPage: React.FC = () => {
         columns={columns}
         searchPlaceholder={t('search_complaint_placeholder')}
       />
+
+      {/* Log New Grievance Ticket Modal */}
+      {showModal && (
+        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 animate-in fade-in duration-200">
+          <div className="bg-white rounded-2xl max-w-lg w-full p-6 shadow-2xl border border-slate-200 space-y-5">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+              <div className="flex items-center gap-2">
+                <div className="w-9 h-9 rounded-xl bg-amber-100 text-amber-800 flex items-center justify-center font-bold">
+                  <AlertCircle className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="font-extrabold text-slate-900 text-base">Submit Grievance / Complaint</h3>
+                  <p className="text-xs text-slate-500">Log a ticket directly with the school administration helpdesk</p>
+                </div>
+              </div>
+              <button
+                onClick={() => setShowModal(false)}
+                className="text-slate-400 hover:text-slate-700 p-1 rounded-lg hover:bg-slate-100"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <form onSubmit={handleCreateComplaint} className="space-y-4 text-xs">
+              <div>
+                <label className="block text-slate-700 font-bold mb-1">Grievance Category *</label>
+                <select
+                  value={category}
+                  onChange={(e) => setCategory(e.target.value)}
+                  className="w-full p-3 rounded-xl border border-slate-300 bg-slate-50 font-bold text-slate-800 text-xs focus:outline-none focus:ring-2 focus:ring-primary-500"
+                >
+                  <option value="ACADEMIC">Academic / Curriculum / Teaching</option>
+                  <option value="INFRASTRUCTURE">Infrastructure & Facilities</option>
+                  <option value="TRANSPORTATION">Transportation / School Bus</option>
+                  <option value="CANTEEN">Canteen / Food Quality</option>
+                  <option value="FEE_BILLING">Administrative / Fee Billing</option>
+                  <option value="GENERAL_OTHER">General / Other</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-slate-700 font-bold mb-1">Priority Level *</label>
+                <select
+                  value={priority}
+                  onChange={(e) => setPriority(e.target.value)}
+                  className="w-full p-3 rounded-xl border border-slate-300 bg-slate-50 font-bold text-slate-800 text-xs focus:outline-none focus:ring-2 focus:ring-primary-500"
+                >
+                  <option value="NORMAL">Normal Priority</option>
+                  <option value="HIGH">High Priority</option>
+                  <option value="URGENT">Urgent Attention Required</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-slate-700 font-bold mb-1">Subject / Headline *</label>
+                <input
+                  type="text"
+                  required
+                  placeholder="e.g. Bus Delay on Route 4 / Issue with Science Lab Equipment"
+                  value={title}
+                  onChange={(e) => setTitle(e.target.value)}
+                  className="w-full p-3 rounded-xl border border-slate-300 text-slate-900 font-bold text-xs focus:outline-none focus:ring-2 focus:ring-primary-500"
+                />
+              </div>
+
+              <div>
+                <label className="block text-slate-700 font-bold mb-1">Detailed Description *</label>
+                <textarea
+                  required
+                  rows={4}
+                  placeholder="Provide complete details regarding your grievance..."
+                  value={description}
+                  onChange={(e) => setDescription(e.target.value)}
+                  className="w-full p-3 rounded-xl border border-slate-300 text-slate-900 font-semibold text-xs focus:outline-none focus:ring-2 focus:ring-primary-500"
+                />
+              </div>
+
+              <div className="flex items-center justify-end gap-3 pt-3 border-t border-slate-100">
+                <button
+                  type="button"
+                  onClick={() => setShowModal(false)}
+                  className="px-4 py-2.5 rounded-xl border border-slate-300 text-slate-700 font-bold hover:bg-slate-100 text-xs"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={submitting || !title.trim() || !description.trim()}
+                  className="px-6 py-2.5 rounded-xl bg-primary-600 hover:bg-primary-700 text-white font-extrabold text-xs shadow-md shadow-primary-600/30 flex items-center gap-2 disabled:opacity-50"
+                >
+                  <Send className="w-4 h-4" />
+                  {submitting ? 'Submitting Ticket...' : 'Submit Grievance Ticket'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
 
     </div>
   );

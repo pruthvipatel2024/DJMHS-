@@ -14,11 +14,17 @@ const config = {
   uploadDir: process.env.UPLOAD_DIR || '../uploads',
   email: {
     host: process.env.SMTP_HOST || 'smtp.gmail.com',
-    port: parseInt(process.env.SMTP_PORT, 10) || 465,
+    port: parseInt(process.env.SMTP_PORT, 10) || 587,
     user: process.env.SMTP_USER || '',
     pass: process.env.SMTP_PASS || '',
     from: process.env.SMTP_FROM || process.env.SMTP_USER || 'no-reply@sdjmt-highschool.edu.in',
     mock: process.env.MOCK_COMMUNICATIONS_TO_LOG === 'true',
+  },
+  otp: {
+    expiryMinutes: parseInt(process.env.OTP_EXPIRY_MINUTES, 10) || 5,
+    maxAttempts: parseInt(process.env.OTP_MAX_ATTEMPTS, 10) || 3,
+    resendCooldownSeconds: parseInt(process.env.OTP_RESEND_COOLDOWN_SECONDS, 10) || 60,
+    devMode: process.env.OTP_DEVELOPMENT_MODE === 'true' && process.env.NODE_ENV !== 'production',
   },
   schoolName: 'Shree Dhaneshkumar Jasvantlal Maheta High School',
   establishedYear: '1959',
