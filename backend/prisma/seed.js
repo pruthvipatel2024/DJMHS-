@@ -163,45 +163,7 @@ async function main() {
     },
   });
   console.log('✓ Academic Year 2026-2027 active.');
-
-  // 🧹 7. COMPLETE PURGE OF DUMMY/TEST DATA
-  console.log('🧹 Purging all student, teacher, fee, exam, attendance, circular, and non-admin records...');
-
-  await prisma.feePayment.deleteMany({});
-  await prisma.feeInstallment.deleteMany({});
-  await prisma.feeStructure.deleteMany({});
-  await prisma.mark.deleteMany({});
-  await prisma.result.deleteMany({});
-  await prisma.examSchedule.deleteMany({});
-  await prisma.exam.deleteMany({});
-  await prisma.subject.deleteMany({});
-  await prisma.studentAttendance.deleteMany({});
-  await prisma.staffAttendance.deleteMany({});
-  await prisma.classTeacherMapping.deleteMany({});
-  await prisma.staffSubjectMapping.deleteMany({});
-  await prisma.timetable.deleteMany({});
-  await prisma.complaint.deleteMany({});
-  await prisma.studentParentMapping.deleteMany({});
-  await prisma.studentAcademicHistory.deleteMany({});
-  await prisma.parent.deleteMany({});
-  await prisma.student.deleteMany({});
-  await prisma.staff.deleteMany({});
-  await prisma.announcement.deleteMany({});
-  await prisma.admissionInquiry.deleteMany({});
-  await prisma.document.deleteMany({});
-  await prisma.notification.deleteMany({});
-  await prisma.auditLog.deleteMany({});
-  await prisma.session.deleteMany({});
-
-  // Remove non-admin user accounts
-  await prisma.user.deleteMany({
-    where: {
-      identifier: { notIn: ['admin@sdjmt.edu.in', 'principal@sdjmt.edu.in'] },
-    },
-  });
-
-  console.log('✨ All student, teacher, fee, exam, attendance, and announcement records deleted successfully!');
-  console.log('🚀 Database is clean and ready for your real data entry.');
+  console.log('🚀 Database core structural configuration initialized successfully without modifying any existing student or staff data.');
 }
 
 main()
