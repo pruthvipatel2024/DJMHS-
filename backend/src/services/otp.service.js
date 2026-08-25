@@ -15,6 +15,7 @@ const generate6DigitOtp = () => {
 
 /**
  * Request and dispatch OTP to registered parent/student contact with Database Persistence
+ * Phase 8 Rule: Only store OTP in PostgreSQL DB IF Resend API returns success.
  */
 const requestStudentOtp = async (grNumber, parentContact = {}, reqId = '') => {
   const reqPrefix = reqId ? `[${reqId}]` : '[OTP]';
@@ -41,19 +42,13 @@ const requestStudentOtp = async (grNumber, parentContact = {}, reqId = '') => {
   const expiryMinutes = config.otp?.expiryMinutes || 5;
   const expiresAt = new Date(now.getTime() + expiryMinutes * 60 * 1000);
 
-  // Diagnostic logging (dev mode only)
-  if (config.otp?.devMode || (process.env.OTP_DEVELOPMENT_MODE === 'true' && process.env.NODE_ENV !== 'production')) {
-    console.log(`${reqPrefix} [DEV ONLY] OTP generated for ${grNumber.replace(/^(.{6})(.*)$/, '$1***')}: ${plainOtp}`);
-  }
-
   const { phone, email, studentName } = parentContact;
   const maskedEmail = email ? email.replace(/^(.{2})(.*)(@.*)$/, '$1***$3') : 'none';
   console.log(`${reqPrefix} Contact resolved: ${maskedEmail}`);
 
   let deliverySuccess = false;
-  let deliveryChannel = 'EMAIL';
 
-  // 2. Dispatch OTP via Email Provider
+  // 2. Dispatch OTP via Resend HTTPS API First
   if (email) {
     const htmlBody = getStudentOtpTemplate({ studentName, grNumber, otp: plainOtp });
     const emailResult = await sendEmailViaProvider({
@@ -65,27 +60,21 @@ const requestStudentOtp = async (grNumber, parentContact = {}, reqId = '') => {
 
     if (emailResult.success) {
       deliverySuccess = true;
-      deliveryChannel = emailResult.channel;
     } else {
-      console.error(`${reqPrefix} Email delivery failed for ${grNumber}:`, emailResult.error);
+      console.error(`${reqPrefix} Resend API delivery failed for ${grNumber}:`, emailResult.error);
+      const err = new Error(emailResult.error || 'Unable to send OTP email right now.');
+      err.code = emailResult.code || 'OTP_DELIVERY_FAILED';
+      throw err; // Phase 8: Abort execution without storing OTP in PostgreSQL
     }
   }
 
   // 3. Dispatch via SMS if configured
   if (phone) {
     const message = `DJMHS High School Portal OTP: ${plainOtp}. Valid for 5 minutes. Do not share this OTP.`;
-    const smsResult = await sendSMSViaProvider({ to: phone, message });
-    if (smsResult.success) deliverySuccess = true;
+    await sendSMSViaProvider({ to: phone, message });
   }
 
-  // 4. Verify Provider Acceptance
-  if (!deliverySuccess && !config.email.mock && process.env.MOCK_COMMUNICATIONS_TO_LOG !== 'true') {
-    const err = new Error('Unable to deliver OTP. Please try again later.');
-    err.code = 'OTP_DELIVERY_FAILED';
-    throw err;
-  }
-
-  // 5. Persistent Upsert in PostgreSQL StudentOtp Table
+  // 4. Phase 8 Enforcement: Persistent Upsert in PostgreSQL StudentOtp Table ONLY AFTER Email Submission
   await prisma.studentOtp.upsert({
     where: { grNumber },
     update: {
@@ -169,7 +158,7 @@ const verifyStudentOtp = async (grNumber, submittedOtp, reqId = '') => {
     throw err;
   }
 
-  // 4. Mark Consumed in Database
+  // 4. Single-Use Consumption: Mark Consumed in Database
   await prisma.studentOtp.update({
     where: { id: record.id },
     data: { consumedAt: now },
