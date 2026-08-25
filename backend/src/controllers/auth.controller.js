@@ -373,6 +373,8 @@ const getCurrentUser = async (req, res, next) => {
   }
 };
 
+const { resolveStudentOtpRecipient } = require('../services/parentRecipient.service');
+
 const requestStudentOtpController = async (req, res, next) => {
   try {
     const reqId = req.headers['x-request-id'] || `OTP-REQ-${crypto.randomUUID().slice(0, 8)}`;
@@ -384,60 +386,28 @@ const requestStudentOtpController = async (req, res, next) => {
       return res.status(400).json({ success: false, error: 'GR Required', message: 'Student General Register (GR) Number is required.' });
     }
 
-    const cleanGr = String(grNumber).trim();
-    const formattedGr = cleanGr.toUpperCase().startsWith('DJMHS-GR-')
-      ? cleanGr.toUpperCase()
-      : `DJMHS-GR-${cleanGr.replace(/^DJMHS-GR-/i, '').padStart(6, '0')}`;
-
-    // Lookup student in PostgreSQL
-    const student = await prisma.student.findFirst({
-      where: {
-        OR: [
-          { grNumber: cleanGr },
-          { grNumber: formattedGr },
-          { grNumber: { equals: cleanGr, mode: 'insensitive' } },
-        ],
-        deletedAt: null,
-      },
-      include: {
-        user: true,
-        parents: { include: { parent: { include: { user: true } } } },
-      },
-    });
-
-    if (!student) {
-      console.log(`[${reqId}] Student lookup failed for GR "${cleanGr}"`);
-      return res.status(404).json({
+    // 1. Resolve registered parent contact dynamically from PostgreSQL
+    const recipientResolution = await resolveStudentOtpRecipient(grNumber);
+    if (!recipientResolution.success) {
+      console.log(`[${reqId}] Recipient resolution failed for GR ${grNumber}: ${recipientResolution.code}`);
+      return res.status(recipientResolution.code === 'STUDENT_NOT_FOUND' ? 404 : 400).json({
         success: false,
-        code: 'STUDENT_NOT_FOUND',
-        message: 'No student account was found for this GR number.',
-      });
-    }
-
-    const primaryParent = student.parents?.find((p) => p.isPrimary)?.parent || student.parents?.[0]?.parent;
-    const contactEmail = primaryParent?.email || primaryParent?.user?.email || student.user?.email;
-    const contactPhone = primaryParent?.phone || primaryParent?.user?.phone || student.user?.phone;
-
-    if (!contactEmail && !contactPhone) {
-      console.log(`[${reqId}] No parent contact registered for student GR ${student.grNumber}`);
-      return res.status(400).json({
-        success: false,
-        code: 'NO_REGISTERED_CONTACT',
-        message: 'No registered parent contact is available for OTP login.',
+        code: recipientResolution.code,
+        message: recipientResolution.message,
       });
     }
 
     const contact = {
-      phone: contactPhone,
-      email: contactEmail,
-      studentName: `${student.firstName} ${student.lastName}`,
+      email: recipientResolution.recipientEmail,
+      phone: recipientResolution.recipientPhone,
+      studentName: recipientResolution.studentName,
     };
 
-    const otpResult = await requestStudentOtp(student.grNumber, contact, reqId);
+    const otpResult = await requestStudentOtp(recipientResolution.grNumber, contact, reqId);
 
     res.status(200).json({
       success: true,
-      message: 'OTP email accepted for delivery.',
+      message: 'OTP email accepted for delivery by provider.',
       expiresIn: otpResult.expiresIn || 300,
     });
   } catch (err) {
@@ -449,11 +419,25 @@ const requestStudentOtpController = async (req, res, next) => {
         secondsRemaining: err.secondsRemaining,
       });
     }
-    if (err.code === 'OTP_DELIVERY_FAILED') {
+    if (err.code === 'INVALID_PARENT_EMAIL') {
+      return res.status(400).json({
+        success: false,
+        code: 'INVALID_PARENT_EMAIL',
+        message: 'The registered parent email address is invalid.',
+      });
+    }
+    if (err.code === 'RESEND_NOT_CONFIGURED' || err.code === 'INVALID_SENDER') {
+      return res.status(500).json({
+        success: false,
+        code: err.code,
+        message: 'OTP email service is not properly configured on server.',
+      });
+    }
+    if (err.code === 'OTP_DELIVERY_FAILED' || err.code === 'RESEND_AUTH_FAILED' || err.code === 'INVALID_RECIPIENT') {
       return res.status(502).json({
         success: false,
-        code: 'OTP_DELIVERY_FAILED',
-        message: 'Unable to deliver OTP. Please try again later.',
+        code: err.code,
+        message: err.message || 'Unable to deliver OTP right now. Please try again later.',
       });
     }
     next(err);
