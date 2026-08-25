@@ -120,21 +120,21 @@ const AdminLayout: React.FC = () => {
       <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
         
         {/* Top Header Navigation */}
-        <header className="h-20 bg-white border-b border-slate-200 shadow-xs px-6 flex items-center justify-between flex-shrink-0">
-          <div className="flex items-center gap-4">
+        <header className="h-16 sm:h-20 bg-white border-b border-slate-200 shadow-xs px-3 sm:px-6 flex items-center justify-between flex-shrink-0">
+          <div className="flex items-center gap-2 sm:gap-4 min-w-0">
             <button
               onClick={() => setSidebarOpen(true)}
-              className="lg:hidden text-slate-500 hover:text-slate-700 p-2 rounded-xl border border-slate-200"
+              className="lg:hidden text-slate-500 hover:text-slate-700 p-2 rounded-xl border border-slate-200 flex-shrink-0"
             >
               <Menu className="w-5 h-5" />
             </button>
-            <div>
-              <h3 className="text-sm font-bold text-slate-800">Shree Dhaneshkumar Jasvantlal Maheta High School</h3>
+            <div className="min-w-0">
+              <h3 className="text-xs sm:text-sm font-bold text-slate-800 truncate">Shree Dhaneshkumar Jasvantlal Maheta High School</h3>
               <p className="text-xs text-slate-400 hidden sm:block">Administrative Enterprise Console</p>
             </div>
           </div>
 
-          <div className="flex items-center gap-3.5">
+          <div className="flex items-center gap-2 sm:gap-3.5 flex-shrink-0">
             <LanguageSwitcher />
 
             {/* Quick Session Shield */}
@@ -148,7 +148,7 @@ const AdminLayout: React.FC = () => {
             </Link>
 
             {/* Notifications */}
-            <button className="relative p-2.5 text-slate-600 hover:bg-slate-100 rounded-xl border border-slate-200 transition">
+            <button className="relative p-2 sm:p-2.5 text-slate-600 hover:bg-slate-100 rounded-xl border border-slate-200 transition">
               <Bell className="w-4 h-4" />
               <span className="absolute top-2 right-2 w-2 h-2 rounded-full bg-accent-500 animate-ping"></span>
               <span className="absolute top-2 right-2 w-2 h-2 rounded-full bg-accent-500"></span>
@@ -158,13 +158,13 @@ const AdminLayout: React.FC = () => {
             <div className="relative">
               <button
                 onClick={() => setUserMenuOpen(!userMenuOpen)}
-                className="flex items-center gap-2.5 p-1.5 pl-3 rounded-xl border border-slate-200 hover:bg-slate-50 transition"
+                className="flex items-center gap-2.5 p-1 sm:p-1.5 sm:pl-3 rounded-xl border border-slate-200 hover:bg-slate-50 transition"
               >
                 <div className="text-right hidden md:block">
                   <div className="text-xs font-bold text-slate-800 leading-tight">Principal Administrator</div>
                   <div className="text-[10px] text-primary-600 font-semibold uppercase tracking-wide">Role: {user?.role?.name}</div>
                 </div>
-                <div className="w-9 h-9 rounded-xl bg-primary-600 text-white font-bold flex items-center justify-center shadow-sm text-sm">
+                <div className="w-8 h-8 sm:w-9 sm:h-9 rounded-xl bg-primary-600 text-white font-bold flex items-center justify-center shadow-sm text-xs sm:text-sm">
                   A
                 </div>
               </button>
@@ -197,7 +197,7 @@ const AdminLayout: React.FC = () => {
         </header>
 
         {/* Main Body Content */}
-        <main className="flex-1 overflow-y-auto p-6 md:p-8 bg-slate-50">
+        <main className="flex-1 overflow-y-auto p-3 sm:p-6 md:p-8 bg-slate-50">
           <div className="max-w-7xl mx-auto">
             <Outlet />
           </div>

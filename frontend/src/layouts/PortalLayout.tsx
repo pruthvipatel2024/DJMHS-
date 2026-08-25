@@ -103,29 +103,29 @@ const PortalLayout: React.FC = () => {
 
       {/* Main Content Wing */}
       <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
-        <header className="h-20 bg-white border-b border-slate-200 shadow-xs px-6 flex items-center justify-between flex-shrink-0">
-          <div className="flex items-center gap-4">
-            <button onClick={() => setSidebarOpen(true)} className="lg:hidden text-slate-500 p-2 rounded-xl border border-slate-200">
+        <header className="h-16 sm:h-20 bg-white border-b border-slate-200 shadow-xs px-3 sm:px-6 flex items-center justify-between flex-shrink-0">
+          <div className="flex items-center gap-2 sm:gap-4 min-w-0">
+            <button onClick={() => setSidebarOpen(true)} className="lg:hidden text-slate-500 p-2 rounded-xl border border-slate-200 flex-shrink-0">
               <Menu className="w-5 h-5" />
             </button>
-            <div>
-              <h3 className="text-sm font-bold text-slate-800">Student & Parent Portal</h3>
+            <div className="min-w-0">
+              <h3 className="text-xs sm:text-sm font-bold text-slate-800 truncate">Student & Parent Portal</h3>
               <p className="text-xs text-slate-400 hidden sm:block">Shree Dhaneshkumar Jasvantlal Maheta High School (Est. 1959)</p>
             </div>
           </div>
 
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2 sm:gap-3 flex-shrink-0">
             <LanguageSwitcher />
             
             {/* CRITICAL ENTERPRISE FEATURE: Parent Sibling Switcher Dropdown */}
             {isParent && siblings.length > 0 && (
-              <div className="flex items-center gap-2 bg-amber-50 border border-amber-200 rounded-xl px-3 py-1.5 shadow-xs">
+              <div className="flex items-center gap-1.5 sm:gap-2 bg-amber-50 border border-amber-200 rounded-xl px-2 sm:px-3 py-1.5 shadow-xs">
                 <Users className="w-4 h-4 text-amber-600 flex-shrink-0" />
                 <span className="text-xs font-bold text-amber-900 hidden md:inline">Sibling Switcher:</span>
                 <select
                   value={activeSibling?.grNumber || ''}
                   onChange={(e) => switchSibling(e.target.value)}
-                  className="bg-transparent text-xs font-black text-amber-800 focus:outline-none cursor-pointer"
+                  className="bg-transparent text-xs font-black text-amber-800 focus:outline-none cursor-pointer max-w-[120px] sm:max-w-none truncate"
                 >
                   {siblings.map((item) => (
                     <option key={item.student.grNumber} value={item.student.grNumber} className="text-slate-800 bg-white">
@@ -136,20 +136,20 @@ const PortalLayout: React.FC = () => {
               </div>
             )}
 
-            <button className="p-2.5 text-slate-600 hover:bg-slate-100 rounded-xl border border-slate-200 transition">
+            <button className="p-2 sm:p-2.5 text-slate-600 hover:bg-slate-100 rounded-xl border border-slate-200 transition">
               <Bell className="w-4 h-4" />
             </button>
             <button
               onClick={logout}
-              className="flex items-center gap-2 px-4 py-2 rounded-xl bg-red-50 hover:bg-red-100 text-red-700 font-semibold text-xs border border-red-200 transition"
+              className="flex items-center gap-1.5 sm:gap-2 px-3 sm:px-4 py-2 rounded-xl bg-red-50 hover:bg-red-100 text-red-700 font-semibold text-xs border border-red-200 transition"
             >
               <LogOut className="w-4 h-4 text-red-500" />
-              Sign Out
+              <span className="hidden sm:inline">Sign Out</span>
             </button>
           </div>
         </header>
 
-        <main className="flex-1 overflow-y-auto p-6 md:p-8 bg-slate-50">
+        <main className="flex-1 overflow-y-auto p-3 sm:p-6 md:p-8 bg-slate-50">
           <div className="max-w-7xl mx-auto">
             <Outlet />
           </div>

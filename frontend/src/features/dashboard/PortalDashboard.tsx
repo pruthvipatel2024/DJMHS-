@@ -42,37 +42,37 @@ const PortalDashboard: React.FC = () => {
     <div className="space-y-8 animate-in fade-in duration-300">
       
       {/* Student Profile Banner */}
-      <div className="bg-gradient-to-r from-primary-800 via-primary-700 to-slate-900 rounded-2xl p-8 text-white shadow-xl relative overflow-hidden flex flex-col md:flex-row items-start md:items-center justify-between gap-6 border border-primary-600">
-        <div className="flex items-center gap-5">
+      <div className="bg-gradient-to-r from-primary-800 via-primary-700 to-slate-900 rounded-2xl p-5 sm:p-8 text-white shadow-xl relative overflow-hidden flex flex-col md:flex-row items-start md:items-center justify-between gap-4 sm:gap-6 border border-primary-600">
+        <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4 sm:gap-5 w-full md:w-auto">
           {photoPath && !imageError ? (
             <img
               src={photoPath}
               alt={`${student?.firstName} ${student?.lastName}`}
               onError={() => setImageError(true)}
-              className="w-16 h-16 rounded-2xl object-cover border-2 border-accent-400 shadow-md flex-shrink-0"
+              className="w-14 h-14 sm:w-16 sm:h-16 rounded-2xl object-cover border-2 border-accent-400 shadow-md flex-shrink-0"
             />
           ) : (
-            <div className="w-16 h-16 rounded-2xl bg-gradient-to-tr from-accent-400 to-accent-600 text-slate-900 font-extrabold text-2xl flex items-center justify-center shadow-md flex-shrink-0">
+            <div className="w-14 h-14 sm:w-16 sm:h-16 rounded-2xl bg-gradient-to-tr from-accent-400 to-accent-600 text-slate-900 font-extrabold text-xl sm:text-2xl flex items-center justify-center shadow-md flex-shrink-0">
               {student?.firstName?.[0] || 'S'}
             </div>
           )}
-          <div className="space-y-1">
-            <div className="inline-flex items-center gap-2 px-3 py-0.5 rounded-full bg-primary-600/80 border border-primary-400/30 text-accent-300 text-xs font-bold uppercase tracking-wider">
+          <div className="space-y-1 min-w-0">
+            <div className="inline-flex items-center gap-2 px-3 py-0.5 rounded-full bg-primary-600/80 border border-primary-400/30 text-accent-300 text-[11px] sm:text-xs font-bold uppercase tracking-wider max-w-full truncate">
               GR: {student?.grNumber || 'DJMHS-001'} | Roll No: {student?.rollNumber || '01'}
             </div>
-            <h1 className="text-2xl md:text-3xl font-black text-white tracking-tight">
+            <h1 className="text-xl sm:text-2xl md:text-3xl font-black text-white tracking-tight truncate">
               {student?.firstName} {student?.lastName}
             </h1>
-            <p className="text-primary-200 text-xs md:text-sm font-semibold">
+            <p className="text-primary-200 text-xs md:text-sm font-semibold leading-relaxed">
               {student?.division?.standard?.name || 'Standard 10'} — Division {student?.division?.name || 'A'} | Shree Dhaneshkumar Jasvantlal Maheta High School (Est. 1959)
             </p>
           </div>
         </div>
 
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-3 w-full md:w-auto">
           <Link
             to="/portal/fees"
-            className="px-6 py-3.5 rounded-xl bg-accent-500 hover:bg-accent-600 text-slate-900 font-extrabold text-xs transition shadow-lg shadow-accent-500/20 flex items-center justify-center gap-2"
+            className="w-full sm:w-auto px-5 sm:px-6 py-3 sm:py-3.5 rounded-xl bg-accent-500 hover:bg-accent-600 text-slate-900 font-extrabold text-xs transition shadow-lg shadow-accent-500/20 flex items-center justify-center gap-2"
           >
             <Coins className="w-4 h-4" />
             View Fee Status

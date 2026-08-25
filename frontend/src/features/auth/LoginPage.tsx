@@ -161,34 +161,34 @@ const LoginPage: React.FC = () => {
       <div className="w-full max-w-5xl grid grid-cols-1 md:grid-cols-12 bg-white rounded-2xl shadow-2xl border border-slate-100 overflow-hidden">
         
         {/* Left Branding Wing */}
-        <div className="md:col-span-6 bg-gradient-to-br from-primary-800 via-primary-900 to-slate-950 p-8 lg:p-12 text-white flex flex-col justify-between relative overflow-hidden">
+        <div className="md:col-span-6 p-5 sm:p-8 lg:p-12 bg-gradient-to-br from-primary-800 via-primary-900 to-slate-950 text-white flex flex-col justify-between relative overflow-hidden">
           <div className="absolute -top-24 -right-24 w-72 h-72 rounded-full bg-accent-500/20 blur-3xl pointer-events-none"></div>
           <div className="absolute -bottom-24 -left-24 w-80 h-80 rounded-full bg-primary-500/20 blur-3xl pointer-events-none"></div>
 
           <div className="relative z-10">
-            <div className="mb-6 w-24 h-24 rounded-full bg-white p-1 shadow-2xl border-2 border-accent-400 overflow-hidden flex items-center justify-center flex-shrink-0">
+            <div className="mb-4 sm:mb-6 w-20 h-20 sm:w-24 sm:h-24 rounded-full bg-white p-1 shadow-2xl border-2 border-accent-400 overflow-hidden flex items-center justify-center flex-shrink-0">
               <img src={logo} alt="DJMHS School Crest" className="w-full h-full object-cover rounded-full" />
             </div>
-            <div className="inline-flex items-center gap-2.5 px-3.5 py-1.5 rounded-full bg-primary-700/80 border border-primary-500/40 text-accent-300 text-xs font-bold uppercase tracking-wider mb-6 shadow-sm">
+            <div className="inline-flex items-center gap-2.5 px-3 py-1 sm:px-3.5 sm:py-1.5 rounded-full bg-primary-700/80 border border-primary-500/40 text-accent-300 text-[11px] sm:text-xs font-bold uppercase tracking-wider mb-4 sm:mb-6 shadow-sm">
               <BookOpen className="w-4 h-4 text-accent-400" />
               Bhavnagar, Gujarat — Est. 1959
             </div>
-            <h1 className="text-2xl lg:text-3xl font-bold tracking-tight text-white leading-tight">
+            <h1 className="text-xl sm:text-2xl lg:text-3xl font-bold tracking-tight text-white leading-tight">
               {t('school_name_full')}
             </h1>
-            <p className="mt-4 text-slate-300 text-sm leading-relaxed">
+            <p className="mt-2 sm:mt-4 text-slate-300 text-xs sm:text-sm leading-relaxed">
               Institutional Enterprise Resource Planning System for Standards 9 to 12 Commerce.
             </p>
           </div>
 
-          <div className="relative z-10 mt-12 pt-6 border-t border-primary-700/50 text-xs text-slate-400">
+          <div className="relative z-10 mt-6 sm:mt-12 pt-4 sm:pt-6 border-t border-primary-700/50 text-[11px] sm:text-xs text-slate-400">
             <p>Institutional Access Portal — Protected by Role-Based Access Control & Encrypted OTP Verification.</p>
           </div>
         </div>
 
         {/* Right Form Wing */}
-        <div className="md:col-span-6 p-8 lg:p-12 flex flex-col justify-center relative">
-          <div className="absolute top-6 right-6">
+        <div className="md:col-span-6 p-5 sm:p-8 lg:p-12 flex flex-col justify-center relative">
+          <div className="flex justify-end mb-4 md:mb-0 md:absolute md:top-6 md:right-6">
             <LanguageSwitcher />
           </div>
           <div className="max-w-md mx-auto w-full">

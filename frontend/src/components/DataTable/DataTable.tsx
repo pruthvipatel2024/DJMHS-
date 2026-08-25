@@ -90,15 +90,15 @@ function DataTable<T extends { id?: string }>({
     <div className="bg-white rounded-2xl border border-slate-200 shadow-soft overflow-hidden">
       
       {/* Top Controls Header */}
-      <div className="p-6 border-b border-slate-100 flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+      <div className="p-3.5 sm:p-6 border-b border-slate-100 flex flex-col md:flex-row items-start md:items-center justify-between gap-3 sm:gap-4">
         <div>
-          {title && <h3 className="text-lg font-bold text-slate-800">{title}</h3>}
+          {title && <h3 className="text-base sm:text-lg font-bold text-slate-800">{title}</h3>}
           {subtitle && <p className="text-xs text-slate-500 mt-0.5">{subtitle}</p>}
         </div>
 
-        <div className="flex flex-wrap items-center gap-2.5 w-full md:w-auto justify-end">
+        <div className="flex flex-wrap items-center gap-2 w-full md:w-auto justify-stretch sm:justify-end">
           {/* Search Input */}
-          <div className="relative flex-grow md:flex-grow-0 md:w-64">
+          <div className="relative w-full sm:w-auto flex-grow md:flex-grow-0 md:w-64">
             <Search className="w-4 h-4 absolute left-3.5 top-3 text-slate-400" />
             <input
               type="text"
@@ -114,27 +114,27 @@ function DataTable<T extends { id?: string }>({
             <button
               onClick={() => setShowFilters(!showFilters)}
               type="button"
-              className={`px-3.5 py-2 rounded-xl border text-xs font-semibold flex items-center gap-1.5 transition ${
+              className={`px-3 py-2 rounded-xl border text-xs font-semibold flex items-center gap-1.5 transition ${
                 showFilters ? 'bg-primary-50 border-primary-300 text-primary-700' : 'border-slate-200 hover:bg-slate-50 text-slate-700'
               }`}
             >
               <Filter className="w-3.5 h-3.5" />
-              Filters
+              <span>Filters</span>
             </button>
           )}
 
           {/* Export Actions */}
           {(onExportExcel || onExportPDF) && (
-            <div className="flex items-center gap-1.5 border-l border-slate-200 pl-2.5">
+            <div className="flex items-center gap-1.5 border-l-0 sm:border-l sm:border-slate-200 sm:pl-2.5">
               {onExportExcel && (
                 <button
                   onClick={onExportExcel}
                   type="button"
                   title="Export to Excel Spreadsheet"
-                  className="p-2 rounded-xl bg-emerald-50 hover:bg-emerald-100 text-emerald-700 transition flex items-center gap-1 text-xs font-semibold px-3 border border-emerald-200"
+                  className="p-2 rounded-xl bg-emerald-50 hover:bg-emerald-100 text-emerald-700 transition flex items-center gap-1 text-xs font-semibold px-2.5 sm:px-3 border border-emerald-200"
                 >
                   <FileSpreadsheet className="w-3.5 h-3.5" />
-                  Excel
+                  <span>Excel</span>
                 </button>
               )}
               {onExportPDF && (
@@ -142,10 +142,10 @@ function DataTable<T extends { id?: string }>({
                   onClick={onExportPDF}
                   type="button"
                   title="Export to PDF Report"
-                  className="p-2 rounded-xl bg-red-50 hover:bg-red-100 text-red-700 transition flex items-center gap-1 text-xs font-semibold px-3 border border-red-200"
+                  className="p-2 rounded-xl bg-red-50 hover:bg-red-100 text-red-700 transition flex items-center gap-1 text-xs font-semibold px-2.5 sm:px-3 border border-red-200"
                 >
                   <FileText className="w-3.5 h-3.5" />
-                  PDF
+                  <span>PDF</span>
                 </button>
               )}
             </div>
@@ -158,7 +158,7 @@ function DataTable<T extends { id?: string }>({
 
       {/* Optional Expandable Filter Bar */}
       {showFilters && filterComponent && (
-        <div className="px-6 py-4 bg-slate-50 border-b border-slate-200 flex flex-wrap gap-4 items-center animate-in fade-in duration-150">
+        <div className="px-3.5 sm:px-6 py-4 bg-slate-50 border-b border-slate-200 flex flex-wrap gap-3 sm:gap-4 items-center animate-in fade-in duration-150">
           {filterComponent}
         </div>
       )}
