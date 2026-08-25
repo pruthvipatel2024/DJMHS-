@@ -16,13 +16,25 @@ const getResendClient = () => {
 
 /**
  * Dispatches an email via the official Resend HTTPS API.
- * ZERO SMTP / Nodemailer dependencies are used in this provider.
+ * The `to` address MUST come dynamically from the student's registered parent contact in PostgreSQL.
+ * The `from` address MUST come exclusively from RESEND_FROM_EMAIL in the backend environment.
  */
 const sendEmailViaProvider = async ({ to, subject, htmlContent, reqId = '' }) => {
   const reqPrefix = reqId ? `[${reqId}]` : '[OTP]';
-  const maskedTo = to ? to.replace(/^(.{2})(.*)(@.*)$/, '$1***$3') : 'none';
 
-  // Check if Resend API Key is configured in backend environment
+  // 1. Audit Recipient Address
+  if (!to || !to.includes('@')) {
+    console.error(`${reqPrefix} Provider: RESEND_API | FAILED: Dynamic recipient address is missing or invalid (${to}).`);
+    return {
+      success: false,
+      code: 'NO_REGISTERED_CONTACT',
+      error: 'No valid recipient email address found for student parent contact.',
+    };
+  }
+
+  const maskedTo = to.replace(/^(.{2})(.*)(@.*)$/, '$1***$3');
+
+  // 2. Check if Resend API Key is configured in backend environment
   const apiKey = process.env.RESEND_API_KEY || config.email?.resendApiKey;
   if (!apiKey) {
     console.error(`${reqPrefix} Provider: RESEND_API | FAILED: RESEND_API_KEY is not configured in backend environment.`);
@@ -33,8 +45,18 @@ const sendEmailViaProvider = async ({ to, subject, htmlContent, reqId = '' }) =>
     };
   }
 
+  // 3. Sender Configuration from backend environment RESEND_FROM_EMAIL
+  const fromAddress = process.env.RESEND_FROM_EMAIL || config.email?.resendFromEmail;
+  if (!fromAddress) {
+    console.error(`${reqPrefix} Provider: RESEND_API | FAILED: RESEND_FROM_EMAIL is not configured in backend environment.`);
+    return {
+      success: false,
+      code: 'INVALID_SENDER',
+      error: 'RESEND_FROM_EMAIL environment variable is not configured on server.',
+    };
+  }
+
   const resend = getResendClient();
-  const fromAddress = process.env.RESEND_FROM_EMAIL || config.email?.from || 'Shree DJM High School <onboarding@resend.dev>';
 
   try {
     const response = await resend.emails.send({
@@ -64,7 +86,7 @@ const sendEmailViaProvider = async ({ to, subject, htmlContent, reqId = '' }) =>
     }
 
     const messageId = response.data?.id || 'resend_submitted';
-    console.log(`${reqPrefix} Provider: RESEND_API | Recipient: ${maskedTo} | Status: SUBMITTED FOR DELIVERY (Message ID: ${messageId})`);
+    console.log(`${reqPrefix} Provider: RESEND_API | Recipient: ${maskedTo} | Status: ACCEPTED BY RESEND (Message ID: ${messageId})`);
 
     return {
       success: true,

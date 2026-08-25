@@ -1,66 +1,12 @@
-const nodemailer = require('nodemailer');
-const config = require('../config');
-
-let transporter = null;
-
-const getTransporter = () => {
-  const smtpUser = process.env.SMTP_USER || config.email.user || 'rtobvn8191@gmail.com';
-  const smtpPass = process.env.SMTP_PASS || config.email.pass || 'akrphoqajxdsjqer';
-  const smtpHost = process.env.SMTP_HOST || config.email.host || 'smtp.gmail.com';
-
-  if (!transporter) {
-    transporter = nodemailer.createTransport({
-      host: smtpHost,
-      port: 587,
-      secure: false, // STARTTLS for port 587
-      requireTLS: true,
-      auth: {
-        user: smtpUser,
-        pass: smtpPass,
-      },
-      tls: {
-        rejectUnauthorized: false,
-      },
-      connectionTimeout: 15000,
-      greetingTimeout: 15000,
-      socketTimeout: 20000,
-    });
-  }
-  return transporter;
-};
+const { sendEmailViaProvider } = require('./providers/email.provider');
+const { sendSMSViaProvider } = require('./providers/sms.provider');
 
 const sendSMS = async (to, message) => {
-  if (process.env.MOCK_COMMUNICATIONS_TO_LOG === 'true') {
-    console.log(`[📱 MOCK SMS TO ${to}]: ${message}`);
-    return { success: true, channel: 'SMS_MOCK' };
-  }
-  // In live environments, trigger Gateway API provider here
-  console.log(`[📱 LIVE SMS TO ${to}]: ${message}`);
-  return { success: true, channel: 'SMS_LIVE' };
+  return sendSMSViaProvider({ to, message });
 };
 
 const sendEmail = async (to, subject, htmlContent) => {
-  const activeTransporter = getTransporter();
-  const smtpUser = process.env.SMTP_USER || config.email.user || 'rtobvn8191@gmail.com';
-
-  if (process.env.MOCK_COMMUNICATIONS_TO_LOG === 'true') {
-    console.log(`[📧 MOCK EMAIL TO ${to}] | SUBJECT: ${subject}`);
-    return { success: true, channel: 'EMAIL_MOCK' };
-  }
-
-  try {
-    const info = await activeTransporter.sendMail({
-      from: `"${config.schoolName}" <${smtpUser}>`,
-      to,
-      subject,
-      html: htmlContent,
-    });
-    console.log(`[📧 LIVE EMAIL DISPATCH SUCCESS] Sent to ${to} | Message ID: ${info.messageId}`);
-    return { success: true, channel: 'EMAIL_SMTP', messageId: info.messageId };
-  } catch (err) {
-    console.error(`❌ [LIVE EMAIL DISPATCH FAILED] Error sending to ${to}:`, err.message);
-    return { success: false, error: err.message };
-  }
+  return sendEmailViaProvider({ to, subject, htmlContent });
 };
 
 const sendOTP = async (user, otp) => {

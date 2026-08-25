@@ -13,13 +13,9 @@ const config = {
   },
   uploadDir: process.env.UPLOAD_DIR || '../uploads',
   email: {
-    provider: process.env.EMAIL_PROVIDER || 'resend',
+    provider: 'resend',
     resendApiKey: process.env.RESEND_API_KEY || '',
-    host: process.env.SMTP_HOST || 'smtp.resend.com',
-    port: parseInt(process.env.SMTP_PORT, 10) || 587,
-    user: process.env.SMTP_USER || '',
-    pass: process.env.SMTP_PASS || '',
-    from: process.env.SMTP_FROM || 'Shree DJM High School <onboarding@resend.dev>',
+    resendFromEmail: process.env.RESEND_FROM_EMAIL || '',
     mock: process.env.MOCK_COMMUNICATIONS_TO_LOG === 'true',
   },
   otp: {

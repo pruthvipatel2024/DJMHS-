@@ -14,7 +14,7 @@ router.get('/system/otp-health', authenticate, authorize(['ADMIN']), async (req,
   try {
     const resendApiKey = process.env.RESEND_API_KEY || config.email?.resendApiKey;
     const isResendConfigured = !!resendApiKey;
-    const fromEmail = process.env.RESEND_FROM_EMAIL || config.email?.from || 'Shree DJM High School <onboarding@resend.dev>';
+    const fromEmail = process.env.RESEND_FROM_EMAIL || config.email?.resendFromEmail || '';
     
     const dbConnected = await prisma.$queryRaw`SELECT 1 as alive`
       .then(() => 'connected')
