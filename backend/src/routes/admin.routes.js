@@ -17,6 +17,8 @@ router.get('/system/otp-health', authenticate, authorize(['ADMIN']), async (req,
     const smtpHost = process.env.SMTP_HOST || config.email.host || 'smtp.gmail.com';
     const smtpPort = parseInt(process.env.SMTP_PORT || config.email.port, 10) || 587;
 
+    const resendApiKey = process.env.RESEND_API_KEY || config.email.resendApiKey;
+    const isResendConfigured = !!resendApiKey;
     const isSmtpConfigured = !!(smtpUser && smtpPass);
     const dbConnected = await prisma.$queryRaw`SELECT 1 as alive`
       .then(() => 'connected')
@@ -27,12 +29,12 @@ router.get('/system/otp-health', authenticate, authorize(['ADMIN']), async (req,
       environment: process.env.NODE_ENV || 'development',
       database: dbConnected,
       emailProvider: {
-        configured: isSmtpConfigured,
+        activeEngine: isResendConfigured ? 'RESEND_API' : (isSmtpConfigured ? 'EMAIL_SMTP' : 'MOCK'),
+        resendConfigured: isResendConfigured,
+        resendKeyPrefix: isResendConfigured ? `${resendApiKey.slice(0, 7)}...` : 'not-configured',
         smtpHost,
         smtpPort,
-        smtpUserConfigured: !!smtpUser,
-        smtpPasswordConfigured: !!smtpPass,
-        fromAddress: process.env.SMTP_FROM || config.email.from || smtpUser || 'not-configured',
+        fromAddress: process.env.SMTP_FROM || config.email.from || 'Shree DJM High School <onboarding@resend.dev>',
         mockMode: process.env.MOCK_COMMUNICATIONS_TO_LOG === 'true',
       },
       otpSettings: {
