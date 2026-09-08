@@ -74,12 +74,15 @@ const getAllStaff = async (req, res, next) => {
             gender: 'Male',
             dob: new Date('1990-01-01'),
             designation: u.roleId === teacherRoles.find(r => r.name === 'ADMIN')?.id ? 'PRINCIPAL' : 'TEACHER',
+            joinDate: new Date(),
             departmentId: defaultDept.id,
             email: u.email || `${u.identifier}@sdjmt.edu.in`,
             phone: u.phone || '9876543210',
             address: 'Bhavnagar, Gujarat',
           },
-        }).catch(() => {});
+        }).catch((err) => {
+          console.warn('[Staff Reconcile] Notice:', err.message);
+        });
       }
     }
 
@@ -132,6 +135,25 @@ const createStaff = async (req, res, next) => {
   try {
     const { firstName, lastName, gender, dob, designation, departmentId, phone, email, address, joinDate } = req.body;
 
+    const cleanFirstName = firstName ? String(firstName).trim() : '';
+    const cleanLastName = lastName ? String(lastName).trim() : '';
+    const cleanPhone = phone ? String(phone).replace(/\D/g, '') : null;
+    const cleanEmail = email ? String(email).trim().toLowerCase() : null;
+    const cleanAddress = address ? String(address).trim() : 'Bhavnagar, Gujarat';
+
+    if (!cleanFirstName || cleanFirstName.length < 2) {
+      return res.status(400).json({ success: false, error: 'Validation Error', message: 'First name must be at least 2 characters.' });
+    }
+    if (!cleanLastName || cleanLastName.length < 2) {
+      return res.status(400).json({ success: false, error: 'Validation Error', message: 'Last name must be at least 2 characters.' });
+    }
+    if (!cleanPhone || cleanPhone.length !== 10 || !/^[6-9]\d{9}$/.test(cleanPhone)) {
+      return res.status(400).json({ success: false, error: 'Validation Error', message: 'Mobile number must be a valid 10-digit number starting with 6, 7, 8, or 9 (e.g. 9825012345).' });
+    }
+    if (!cleanEmail || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(cleanEmail)) {
+      return res.status(400).json({ success: false, error: 'Validation Error', message: 'Please provide a valid email address.' });
+    }
+
     // Auto-generate unique Employee ID: DJMHS-EMP-XXXX per PRD Chapter 3.5
     let count = await prisma.staff.count();
     let nextCount = count + 1;
@@ -167,9 +189,6 @@ const createStaff = async (req, res, next) => {
     if (targetDept) validDeptId = targetDept.id;
 
     const validDesignation = mapDesignation(designation);
-
-    const cleanEmail = (email && email.trim()) ? email.trim() : null;
-    const cleanPhone = (phone && phone.trim()) ? phone.trim() : null;
     let staffIdentifier = cleanEmail || empId;
 
     let existingUser = await prisma.user.findFirst({
@@ -199,7 +218,58 @@ const createStaff = async (req, res, next) => {
             passwordHash: passwordHash,
             roleId: teacherRole.id,
             isFirstLogin: true,
+            isActive: true,
           },
+        });
+      } else {
+        newUser = await tx.user.update({
+          where: { id: existingUser.id },
+          data: {
+            identifier: cleanEmail || empId,
+            email: cleanEmail || existingUser.email,
+            phone: cleanPhone || existingUser.phone,
+            passwordHash: passwordHash,
+            roleId: teacherRole.id,
+            isFirstLogin: true,
+            isActive: true,
+            deletedAt: null,
+            isLocked: false,
+            lockUntil: null,
+            failedLoginAttempts: 0,
+          },
+        });
+      }
+
+      // Check if staff profile already exists
+      const existingStaffProfile = await tx.staff.findFirst({
+        where: {
+          OR: [
+            { userId: newUser.id },
+            { empId: empId },
+            ...(cleanEmail ? [{ email: cleanEmail }] : []),
+          ],
+        },
+      });
+
+      if (existingStaffProfile) {
+        return await tx.staff.update({
+          where: { id: existingStaffProfile.id },
+          data: {
+            userId: newUser.id,
+            firstName: cleanFirstName,
+            lastName: cleanLastName,
+            gender: gender || 'Other',
+            dob: new Date(dob || '1990-01-01'),
+            designation: validDesignation,
+            joinDate: joinDate ? new Date(joinDate) : new Date(),
+            departmentId: validDeptId,
+            phone: cleanPhone,
+            email: cleanEmail,
+            address: cleanAddress,
+            photoUrl: photoAsset ? photoAsset.photoUrl : (req.body.photoUrl || existingStaffProfile.photoUrl || null),
+            deletedAt: null,
+          },
+          include: { department: true },
         });
       }
 
@@ -207,16 +277,16 @@ const createStaff = async (req, res, next) => {
         data: {
           userId: newUser.id,
           empId: empId,
-          firstName,
-          lastName,
+          firstName: cleanFirstName,
+          lastName: cleanLastName,
           gender: gender || 'Other',
           dob: new Date(dob || '1990-01-01'),
           designation: validDesignation,
           joinDate: joinDate ? new Date(joinDate) : new Date(),
           departmentId: validDeptId,
-          phone,
-          email,
-          address: address || 'Bhavnagar, Gujarat',
+          phone: cleanPhone,
+          email: cleanEmail,
+          address: cleanAddress,
           photoUrl: photoAsset ? photoAsset.photoUrl : (req.body.photoUrl || null),
         },
         include: { department: true },
@@ -224,19 +294,29 @@ const createStaff = async (req, res, next) => {
     });
 
     // Non-blocking notification dispatch with HTML email template
-    if (phone) {
-      sendSMS(phone, `Welcome to DJMHS High School! Your Faculty Portal ID is ${email || empId} and password is ${defaultPassword}. Please change password on first login.`).catch(() => {});
+    if (cleanPhone) {
+      sendSMS(cleanPhone, `Welcome to DJMHS High School! Your Faculty Portal ID is ${cleanEmail || empId} and password is ${defaultPassword}. Please change password on first login.`).catch(() => {});
     }
-    if (email) {
+    if (cleanEmail) {
       const htmlBody = getStaffOnboardingTemplate({
-        staffName: `${firstName} ${lastName}`,
+        staffName: `${cleanFirstName} ${cleanLastName}`,
         empId,
         designation: validDesignation,
         department: newStaff.department?.name || 'Commerce Department',
-        email,
+        email: cleanEmail,
         initialPassword: defaultPassword,
       });
-      sendEmail(email, 'DJMHS High School — Faculty Onboarding Credentials', htmlBody).catch(() => {});
+      sendEmail(cleanEmail, 'DJMHS High School — Faculty Onboarding Credentials', htmlBody)
+        .then((res) => {
+          if (res && res.success) {
+            console.log(`[Staff Onboarding] Email successfully dispatched to ${cleanEmail} (Message ID: ${res.messageId})`);
+          } else {
+            console.warn(`[Staff Onboarding] Email dispatch notice for ${cleanEmail}:`, res?.error || res);
+          }
+        })
+        .catch((err) => {
+          console.error(`[Staff Onboarding] Failed to dispatch onboarding email to ${cleanEmail}:`, err.message);
+        });
     }
 
     res.status(201).json({
@@ -267,15 +347,49 @@ const updateStaff = async (req, res, next) => {
       photoUrl,
     } = req.body;
 
+    const staffRecord = await prisma.staff.findUnique({ where: { id } });
+    if (!staffRecord) {
+      return res.status(404).json({ success: false, error: 'Not Found', message: 'Staff personnel record not found.' });
+    }
+
     const updateData = {};
-    if (firstName) updateData.firstName = firstName;
-    if (lastName) updateData.lastName = lastName;
+    if (firstName) {
+      const cleanFirstName = String(firstName).trim();
+      if (cleanFirstName.length < 2) {
+        return res.status(400).json({ success: false, error: 'Validation Error', message: 'First name must be at least 2 characters.' });
+      }
+      updateData.firstName = cleanFirstName;
+    }
+
+    if (lastName) {
+      const cleanLastName = String(lastName).trim();
+      if (cleanLastName.length < 2) {
+        return res.status(400).json({ success: false, error: 'Validation Error', message: 'Last name must be at least 2 characters.' });
+      }
+      updateData.lastName = cleanLastName;
+    }
+
     if (gender) updateData.gender = gender;
     if (dob) updateData.dob = new Date(dob);
     if (designation) updateData.designation = mapDesignation(designation);
-    if (phone) updateData.phone = phone;
-    if (email) updateData.email = email;
-    if (address !== undefined) updateData.address = address;
+
+    if (phone) {
+      const cleanPhone = String(phone).replace(/\D/g, '');
+      if (cleanPhone.length !== 10 || !/^[6-9]\d{9}$/.test(cleanPhone)) {
+        return res.status(400).json({ success: false, error: 'Validation Error', message: 'Mobile number must be a valid 10-digit number starting with 6, 7, 8, or 9 (e.g. 9825012345).' });
+      }
+      updateData.phone = cleanPhone;
+    }
+
+    if (email) {
+      const cleanEmail = String(email).trim().toLowerCase();
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(cleanEmail)) {
+        return res.status(400).json({ success: false, error: 'Validation Error', message: 'Please provide a valid email address.' });
+      }
+      updateData.email = cleanEmail;
+    }
+
+    if (address !== undefined) updateData.address = address ? String(address).trim() : '';
     if (joinDate) updateData.joinDate = new Date(joinDate);
     if (employmentType) updateData.employmentType = employmentType;
     if (photoUrl !== undefined) updateData.photoUrl = photoUrl || null;
@@ -294,10 +408,25 @@ const updateStaff = async (req, res, next) => {
       }
     }
 
-    const updated = await prisma.staff.update({
-      where: { id },
-      data: updateData,
-      include: { department: true },
+    const updated = await prisma.$transaction(async (tx) => {
+      const updatedStaff = await tx.staff.update({
+        where: { id },
+        data: updateData,
+        include: { department: true },
+      });
+
+      // Keep user login credentials & phone in sync
+      if (staffRecord.userId && (updateData.email || updateData.phone)) {
+        await tx.user.update({
+          where: { id: staffRecord.userId },
+          data: {
+            ...(updateData.email ? { email: updateData.email, identifier: updateData.email } : {}),
+            ...(updateData.phone ? { phone: updateData.phone } : {}),
+          },
+        }).catch(() => {});
+      }
+
+      return updatedStaff;
     });
 
     res.status(200).json({ success: true, message: 'Staff personnel profile updated successfully.', data: updated });

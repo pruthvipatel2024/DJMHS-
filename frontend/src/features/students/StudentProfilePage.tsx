@@ -1,16 +1,18 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { GraduationCap, Users, CalendarCheck, Coins, ArrowLeft, Phone, Mail, Award, Clock } from 'lucide-react';
+import { GraduationCap, Users, CalendarCheck, Coins, ArrowLeft, Phone, Mail, Award, Clock, Edit } from 'lucide-react';
 import api from '../../services/api';
 import LoadingSkeleton from '../../components/States/LoadingSkeleton';
 import { formatDate } from '../../utils/date.utils';
 import { getFullPhotoUrl } from '../../utils/photo.utils';
+import StudentFormModal from './StudentFormModal';
 
 const StudentProfilePage: React.FC = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const [student, setStudent] = useState<any>(null);
   const [loading, setLoading] = useState(true);
+  const [showEditModal, setShowEditModal] = useState(false);
   const [activeTab, setActiveTab] = useState<'personal' | 'parents' | 'history' | 'fees'>('personal');
   const [imageError, setImageError] = useState(false);
 
@@ -83,8 +85,17 @@ const StudentProfilePage: React.FC = () => {
           </div>
         </div>
 
-        <div className="flex flex-col gap-2 w-full md:w-auto text-xs">
-          <button onClick={() => setActiveTab('fees')} className="px-5 py-3 rounded-xl bg-amber-400 hover:bg-amber-500 text-slate-900 font-extrabold transition shadow-lg flex items-center justify-center gap-2">
+        <div className="flex flex-col sm:flex-row items-center gap-2.5 w-full md:w-auto text-xs">
+          <button
+            onClick={() => setShowEditModal(true)}
+            className="w-full sm:w-auto px-5 py-3 rounded-xl bg-white/10 hover:bg-white/20 text-white font-extrabold transition border border-white/20 shadow-md flex items-center justify-center gap-2"
+          >
+            <Edit className="w-4 h-4 text-white" /> Edit Pupil Profile
+          </button>
+          <button
+            onClick={() => setActiveTab('fees')}
+            className="w-full sm:w-auto px-5 py-3 rounded-xl bg-amber-400 hover:bg-amber-500 text-slate-900 font-extrabold transition shadow-lg flex items-center justify-center gap-2"
+          >
             <Coins className="w-4 h-4 text-slate-900" /> Review Fee Ledger
           </button>
         </div>
@@ -271,6 +282,18 @@ const StudentProfilePage: React.FC = () => {
           </div>
         )}
       </div>
+
+      {showEditModal && (
+        <StudentFormModal
+          isOpen={showEditModal}
+          initialData={student}
+          onClose={() => setShowEditModal(false)}
+          onSuccess={() => {
+            // Re-fetch student details
+            api.get(`/students/${id}`).then((res) => setStudent(res.data.data));
+          }}
+        />
+      )}
 
     </div>
   );

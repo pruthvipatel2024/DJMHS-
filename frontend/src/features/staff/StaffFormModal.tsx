@@ -1,24 +1,63 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useForm } from 'react-hook-form';
 import { z } from 'zod';
 import { zodResolver } from '@hookform/resolvers/zod';
 import Modal from '../../components/Modal/Modal';
 import api from '../../services/api';
-import { UserPlus, Save, Check, Upload, Trash2, Camera, MapPin } from 'lucide-react';
+import { UserPlus, Save, Check, Upload, Trash2, Camera, MapPin, Sparkles, RotateCcw, Phone, Mail, AlertCircle, RefreshCw } from 'lucide-react';
+import StorageService from '../../utils/storage.utils';
+import useUnsavedWarning from '../../utils/useUnsavedWarning';
+import { getFullPhotoUrl } from '../../utils/photo.utils';
+
+const phoneRegex = /^[6-9]\d{9}$/;
+const nameRegex = /^[a-zA-Z\s.'-]+$/;
 
 const staffSchema = z.object({
-  firstName: z.string().min(2, 'First name is mandatory.'),
-  lastName: z.string().min(2, 'Last name is mandatory.'),
+  firstName: z
+    .string()
+    .trim()
+    .min(2, 'First name must be at least 2 characters.')
+    .max(50, 'First name cannot exceed 50 characters.')
+    .regex(nameRegex, 'First name should only contain alphabets and valid punctuation (e.g. Rajeshbhai).'),
+  lastName: z
+    .string()
+    .trim()
+    .min(2, 'Last name must be at least 2 characters.')
+    .max(50, 'Last name cannot exceed 50 characters.')
+    .regex(nameRegex, 'Last name should only contain alphabets (e.g. Patel).'),
   gender: z.string().min(1, 'Please select gender.'),
-  dob: z.string().min(1, 'Date of birth is required.'),
-  designation: z.string().min(2, 'Designation required (e.g., HOD, Teacher).'),
+  dob: z
+    .string()
+    .min(1, 'Date of birth is required.')
+    .refine((val) => {
+      if (!val) return false;
+      const d = new Date(val);
+      if (isNaN(d.getTime())) return false;
+      const now = new Date();
+      if (d > now) return false;
+      const age = (now.getTime() - d.getTime()) / (365.25 * 24 * 60 * 60 * 1000);
+      return age >= 18 && age <= 75;
+    }, 'Date of birth must be a realistic age for a faculty member (between 18 and 75 years old).'),
+  designation: z.string().min(1, 'Please select designation.'),
   departmentId: z.string().min(1, 'Please select faculty department.'),
-  phone: z.string().length(10, 'Mobile contact must be 10 digits.'),
-  email: z.string().email('Please input valid email address.'),
-  address: z.string().optional(),
-  joinDate: z.string().optional(),
-  employmentType: z.string().optional(),
-  photoUrl: z.string().optional(),
+  phone: z
+    .string()
+    .trim()
+    .min(1, 'Mobile contact number is mandatory.')
+    .transform((val) => val.replace(/\D/g, ''))
+    .refine((val) => val.length === 10 && phoneRegex.test(val), {
+      message: 'Mobile number must be a valid 10-digit number starting with 6, 7, 8, or 9 (e.g. 9825012345). No letters or spaces allowed.',
+    }),
+  email: z
+    .string()
+    .trim()
+    .toLowerCase()
+    .min(1, 'Email address is required for portal login.')
+    .email('Please input a valid email address (e.g. faculty@sdjmt.edu.in).'),
+  address: z.string().optional().or(z.literal('')),
+  joinDate: z.string().optional().or(z.literal('')),
+  employmentType: z.string().default('PERMANENT'),
+  photoUrl: z.string().optional().or(z.literal('')),
 });
 
 type StaffFormData = z.infer<typeof staffSchema>;
@@ -34,9 +73,12 @@ const StaffFormModal: React.FC<StaffFormModalProps> = ({ isOpen, onClose, onSucc
   const [departments, setDepartments] = useState<any[]>([]);
   const [submitting, setSubmitting] = useState(false);
   const [draftSaved, setDraftSaved] = useState(false);
+  const [draftRestored, setDraftRestored] = useState(false);
   const [photoPreview, setPhotoPreview] = useState<string | null>(null);
   const [photoFile, setPhotoFile] = useState<File | null>(null);
   const [uploadingPhoto, setUploadingPhoto] = useState(false);
+  const [serverError, setServerError] = useState<string | null>(null);
+  const [loadingDetails, setLoadingDetails] = useState(false);
 
   const {
     register,
@@ -44,7 +86,7 @@ const StaffFormModal: React.FC<StaffFormModalProps> = ({ isOpen, onClose, onSucc
     watch,
     reset,
     setValue,
-    formState: { errors },
+    formState: { errors, isDirty },
   } = useForm<StaffFormData>({
     resolver: zodResolver(staffSchema),
     defaultValues: {
@@ -64,76 +106,183 @@ const StaffFormModal: React.FC<StaffFormModalProps> = ({ isOpen, onClose, onSucc
   });
 
   const formData = watch();
+  const formDraftKey = initialData?.id ? `sdjm_staff_edit_${initialData.id}` : 'sdjm_staff_draft';
+
+  // Warn on accidental tab close or page refresh when modal is open and has unsaved edits
+  useUnsavedWarning(
+    isOpen && (isDirty || !!formData.firstName),
+    'You have unsubmitted changes in the staff form. Are you sure you want to refresh? Your entered form draft has been preserved.'
+  );
+
+  // Auto-save draft for new onboarding only (not edit to prevent overwriting server source of truth)
   useEffect(() => {
-    if (!initialData && isOpen && formData.firstName) {
-      localStorage.setItem('sdjm_staff_draft', JSON.stringify(formData));
+    if (isOpen && !initialData && (formData.firstName || formData.lastName || formData.phone || formData.email)) {
+      StorageService.set(formDraftKey, formData, 'local');
       setDraftSaved(true);
       const timer = setTimeout(() => setDraftSaved(false), 2000);
       return () => clearTimeout(timer);
     }
-  }, [formData, initialData, isOpen]);
+  }, [formData, formDraftKey, isOpen, initialData]);
 
+  // Fetch departments list
   useEffect(() => {
     const fetchDepts = async () => {
       try {
         const res = await api.get('/settings');
-        setDepartments(res.data.data.departments || [
-          { id: 'dept_1', name: 'Commerce & Accounts' },
-          { id: 'dept_2', name: 'Languages & Humanities' },
-          { id: 'dept_3', name: 'Administration & Secretarial' }
-        ]);
+        const deptList = res.data?.data?.departments || [];
+        if (deptList.length > 0) {
+          setDepartments(deptList);
+        } else {
+          setDepartments([
+            { id: 'dept_1', name: 'Commerce & Accounts' },
+            { id: 'dept_2', name: 'Languages & Humanities' },
+            { id: 'dept_3', name: 'Administration & Secretarial' },
+          ]);
+        }
       } catch (e) {
         setDepartments([
           { id: 'dept_1', name: 'Commerce & Accounts' },
           { id: 'dept_2', name: 'Languages & Humanities' },
-          { id: 'dept_3', name: 'Administration & Secretarial' }
+          { id: 'dept_3', name: 'Administration & Secretarial' },
         ]);
       }
     };
-    fetchDepts();
-  }, []);
+    if (isOpen) {
+      fetchDepts();
+    }
+  }, [isOpen]);
+
+  const populateFields = useCallback((source: any) => {
+    if (!source) return;
+
+    let formattedDob = '';
+    if (source.dob) {
+      try {
+        const d = new Date(source.dob);
+        if (!isNaN(d.getTime())) {
+          formattedDob = d.toISOString().split('T')[0];
+        }
+      } catch (e) {}
+    }
+
+    let formattedJoinDate = '';
+    if (source.joinDate) {
+      try {
+        const d = new Date(source.joinDate);
+        if (!isNaN(d.getTime())) {
+          formattedJoinDate = d.toISOString().split('T')[0];
+        }
+      } catch (e) {}
+    }
+
+    const cleanPhone = (source.phone || source.user?.phone || '').replace(/\D/g, '');
+    const cleanEmail = source.email || source.user?.email || '';
+    const targetDeptId = source.departmentId || source.department?.id || '';
+
+    const populatedValues: StaffFormData = {
+      firstName: source.firstName || '',
+      lastName: source.lastName || '',
+      gender: source.gender || 'Male',
+      dob: formattedDob,
+      designation: source.designation || 'TEACHER',
+      departmentId: targetDeptId,
+      phone: cleanPhone,
+      email: cleanEmail,
+      address: source.address || '',
+      joinDate: formattedJoinDate,
+      employmentType: source.employmentType || 'PERMANENT',
+      photoUrl: source.photoUrl || '',
+    };
+
+    reset(populatedValues);
+
+    if (source.photoUrl) {
+      setPhotoPreview(getFullPhotoUrl(source.photoUrl));
+    } else {
+      setPhotoPreview(null);
+    }
+    setPhotoFile(null);
+  }, [reset]);
+
+  const handleDiscardDraft = () => {
+    StorageService.remove(formDraftKey, 'local');
+    setDraftRestored(false);
+    if (initialData) {
+      populateFields(initialData);
+    } else {
+      setPhotoPreview(null);
+      setPhotoFile(null);
+      reset({
+        firstName: '',
+        lastName: '',
+        gender: 'Male',
+        dob: '',
+        designation: 'TEACHER',
+        departmentId: departments[0]?.id || '',
+        phone: '',
+        email: '',
+        address: '',
+        joinDate: new Date().toISOString().split('T')[0],
+        employmentType: 'PERMANENT',
+        photoUrl: '',
+      });
+    }
+  };
 
   useEffect(() => {
-    if (isOpen) {
-      if (initialData) {
-        setPhotoPreview(initialData.photoUrl || null);
-        setPhotoFile(null);
-        reset({
-          firstName: initialData.firstName || '',
-          lastName: initialData.lastName || '',
-          gender: initialData.gender || 'Male',
-          dob: initialData.dob ? new Date(initialData.dob).toISOString().split('T')[0] : '',
-          designation: initialData.designation || 'TEACHER',
-          departmentId: initialData.departmentId || '',
-          phone: initialData.phone || '',
-          email: initialData.email || '',
-          address: initialData.address || '',
-          joinDate: initialData.joinDate ? new Date(initialData.joinDate).toISOString().split('T')[0] : '',
-          employmentType: initialData.employmentType || 'PERMANENT',
-          photoUrl: initialData.photoUrl || '',
-        });
+    if (!isOpen) return;
+
+    setServerError(null);
+
+    if (initialData) {
+      // 1. Immediately prefill from initialData passed from props (no blank delay)
+      populateFields(initialData);
+
+      // 2. Fetch latest full details from backend API to ensure 100% complete fresh data
+      if (initialData.id) {
+        setLoadingDetails(true);
+        api
+          .get(`/staff/${initialData.id}`)
+          .then((res) => {
+            if (res.data?.data) {
+              populateFields(res.data.data);
+            }
+          })
+          .catch((err) => {
+            console.warn('Using prop initialData for staff form:', err);
+          })
+          .finally(() => {
+            setLoadingDetails(false);
+          });
+      }
+    } else {
+      setPhotoPreview(null);
+      setPhotoFile(null);
+
+      const savedDraft = StorageService.get<StaffFormData | null>('sdjm_staff_draft', null, 'local');
+      if (savedDraft && (savedDraft.firstName || savedDraft.email || savedDraft.phone)) {
+        reset(savedDraft);
+        setDraftRestored(true);
+        if (savedDraft.photoUrl) setPhotoPreview(getFullPhotoUrl(savedDraft.photoUrl));
       } else {
-        setPhotoPreview(null);
-        setPhotoFile(null);
+        setDraftRestored(false);
         reset({
           firstName: '',
           lastName: '',
           gender: 'Male',
           dob: '',
           designation: 'TEACHER',
-          departmentId: '',
+          departmentId: departments[0]?.id || '',
           phone: '',
           email: '',
           address: '',
-          joinDate: '',
+          joinDate: new Date().toISOString().split('T')[0],
           employmentType: 'PERMANENT',
           photoUrl: '',
         });
       }
     }
-  }, [isOpen, initialData, reset]);
-
-  const [serverError, setServerError] = useState<string | null>(null);
+  }, [isOpen, initialData, populateFields, reset, departments]);
 
   const handlePhotoSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -164,7 +313,7 @@ const StaffFormModal: React.FC<StaffFormModalProps> = ({ isOpen, onClose, onSucc
 
       if (res.data.data?.photoUrl) {
         setValue('photoUrl', res.data.data.photoUrl);
-        setPhotoPreview(res.data.data.photoUrl);
+        setPhotoPreview(getFullPhotoUrl(res.data.data.photoUrl));
         setPhotoFile(null);
       }
     } catch (err: any) {
@@ -189,10 +338,20 @@ const StaffFormModal: React.FC<StaffFormModalProps> = ({ isOpen, onClose, onSucc
     setSubmitting(true);
     setServerError(null);
     try {
+      // Clean phone and names before payload dispatch
+      const sanitizedData = {
+        ...data,
+        firstName: data.firstName.trim(),
+        lastName: data.lastName.trim(),
+        phone: data.phone.replace(/\D/g, ''),
+        email: data.email.trim().toLowerCase(),
+        address: data.address ? data.address.trim() : '',
+      };
+
       let response;
       if (photoFile) {
         const formDataPayload = new FormData();
-        Object.entries(data).forEach(([key, val]) => {
+        Object.entries(sanitizedData).forEach(([key, val]) => {
           if (val !== undefined && val !== null) formDataPayload.append(key, String(val));
         });
         formDataPayload.append('photo', photoFile);
@@ -208,17 +367,18 @@ const StaffFormModal: React.FC<StaffFormModalProps> = ({ isOpen, onClose, onSucc
         }
       } else {
         if (initialData?.id) {
-          response = await api.put(`/staff/${initialData.id}`, data);
+          response = await api.put(`/staff/${initialData.id}`, sanitizedData);
         } else {
-          response = await api.post('/staff', data);
+          response = await api.post('/staff', sanitizedData);
         }
       }
 
-      localStorage.removeItem('sdjm_staff_draft');
-      onSuccess(response.data.data || data);
+      StorageService.remove(formDraftKey, 'local');
+      setDraftRestored(false);
+      onSuccess(response.data.data || sanitizedData);
       onClose();
     } catch (err: any) {
-      setServerError(err.response?.data?.message || 'Failed to onboard staff member. Please check email/phone or department.');
+      setServerError(err.response?.data?.message || 'Failed to save faculty record. Please check mobile, email or department fields.');
     } finally {
       setSubmitting(false);
     }
@@ -228,16 +388,41 @@ const StaffFormModal: React.FC<StaffFormModalProps> = ({ isOpen, onClose, onSucc
     <Modal
       isOpen={isOpen}
       onClose={onClose}
-      title={initialData ? `Update Faculty Record: ${initialData.empId}` : 'Onboard New Institutional Staff'}
+      title={initialData ? `Update Faculty Record: ${initialData.empId || 'Faculty Profile'}` : 'Onboard New Institutional Staff'}
       subtitle="Manage faculty profile, credentials, department alignment, and photograph asset."
       maxWidth="2xl"
     >
       <form onSubmit={handleSubmit(onSubmit)} className="space-y-5">
         
+        {loadingDetails && (
+          <div className="p-2.5 rounded-xl bg-primary-50 text-primary-700 border border-primary-200 text-xs font-bold flex items-center gap-2 animate-pulse">
+            <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+            <span>Loading complete faculty details from server...</span>
+          </div>
+        )}
+
         {serverError && (
           <div className="p-3.5 rounded-xl bg-rose-50 border border-rose-200 text-rose-800 text-xs font-bold flex items-center justify-between">
             <span>⚠️ {serverError}</span>
-            <button type="button" onClick={() => setServerError(null)} className="text-rose-600 font-bold hover:underline">Dismiss</button>
+            <button type="button" onClick={() => setServerError(null)} className="text-rose-600 font-bold hover:underline">
+              Dismiss
+            </button>
+          </div>
+        )}
+
+        {draftRestored && !initialData && (
+          <div className="p-3 rounded-xl bg-indigo-50 border border-indigo-200 text-indigo-900 text-xs font-bold flex items-center justify-between shadow-xs">
+            <div className="flex items-center gap-2">
+              <Sparkles className="w-4 h-4 text-indigo-600 flex-shrink-0" />
+              <span>In-progress faculty draft restored from your active session.</span>
+            </div>
+            <button
+              type="button"
+              onClick={handleDiscardDraft}
+              className="px-2.5 py-1 rounded-lg bg-white hover:bg-slate-100 text-slate-700 border border-slate-300 font-bold text-[11px] whitespace-nowrap flex items-center gap-1 shadow-2xs"
+            >
+              <RotateCcw className="w-3 h-3 text-slate-500" /> Discard Draft
+            </button>
           </div>
         )}
 
@@ -268,7 +453,7 @@ const StaffFormModal: React.FC<StaffFormModalProps> = ({ isOpen, onClose, onSucc
 
           <div className="flex-1 space-y-1.5 text-center sm:text-left">
             <label className="block text-xs font-black text-slate-800">Faculty Identity Photograph</label>
-            <p className="text-[11px] text-slate-500">Upload a formal passport photograph (JPEG/PNG/WebP, max 5MB). Asset will be stored in Cloudinary.</p>
+            <p className="text-[11px] text-slate-500">Upload a formal passport photograph (JPEG/PNG/WebP, max 5MB). Asset will be stored securely.</p>
             <div className="flex items-center justify-center sm:justify-start gap-2 pt-1">
               <label className="px-3 py-1.5 rounded-lg bg-primary-600 hover:bg-primary-700 text-white font-bold text-xs cursor-pointer inline-flex items-center gap-1.5 shadow-sm transition">
                 <Upload className="w-3.5 h-3.5" />
@@ -276,7 +461,11 @@ const StaffFormModal: React.FC<StaffFormModalProps> = ({ isOpen, onClose, onSucc
                 <input type="file" accept="image/jpeg,image/png,image/webp" onChange={handlePhotoSelect} className="hidden" />
               </label>
               {photoPreview && (
-                <button type="button" onClick={handleRemovePhoto} className="px-3 py-1.5 rounded-lg border border-rose-200 text-rose-600 hover:bg-rose-50 font-bold text-xs inline-flex items-center gap-1 transition">
+                <button
+                  type="button"
+                  onClick={handleRemovePhoto}
+                  className="px-3 py-1.5 rounded-lg border border-rose-200 text-rose-600 hover:bg-rose-50 font-bold text-xs inline-flex items-center gap-1 transition"
+                >
                   <Trash2 className="w-3.5 h-3.5" /> Remove
                 </button>
               )}
@@ -289,7 +478,14 @@ const StaffFormModal: React.FC<StaffFormModalProps> = ({ isOpen, onClose, onSucc
             <label className="block text-xs font-bold text-slate-700 uppercase mb-1.5">First Name *</label>
             <input
               type="text"
-              {...register('firstName')}
+              {...register('firstName', {
+                onChange: (e) => {
+                  const clean = e.target.value.replace(/[^a-zA-Z\s.'-]/g, '');
+                  if (clean !== e.target.value) {
+                    setValue('firstName', clean, { shouldValidate: true, shouldDirty: true });
+                  }
+                },
+              })}
               placeholder="e.g. Rajeshbhai"
               className="w-full p-2.5 border border-slate-300 rounded-xl text-sm focus:ring-2 focus:ring-primary-500"
             />
@@ -300,7 +496,14 @@ const StaffFormModal: React.FC<StaffFormModalProps> = ({ isOpen, onClose, onSucc
             <label className="block text-xs font-bold text-slate-700 uppercase mb-1.5">Last Name *</label>
             <input
               type="text"
-              {...register('lastName')}
+              {...register('lastName', {
+                onChange: (e) => {
+                  const clean = e.target.value.replace(/[^a-zA-Z\s.'-]/g, '');
+                  if (clean !== e.target.value) {
+                    setValue('lastName', clean, { shouldValidate: true, shouldDirty: true });
+                  }
+                },
+              })}
               placeholder="e.g. Patel"
               className="w-full p-2.5 border border-slate-300 rounded-xl text-sm focus:ring-2 focus:ring-primary-500"
             />
@@ -316,6 +519,7 @@ const StaffFormModal: React.FC<StaffFormModalProps> = ({ isOpen, onClose, onSucc
               <option value="Female">Female</option>
               <option value="Other">Other</option>
             </select>
+            {errors.gender && <p className="text-red-500 text-[11px] mt-1 font-semibold">{errors.gender.message}</p>}
           </div>
 
           <div>
@@ -342,6 +546,7 @@ const StaffFormModal: React.FC<StaffFormModalProps> = ({ isOpen, onClose, onSucc
               <option value="OFFICE_ADMIN">Office Administrator</option>
               <option value="NON_TEACHING_STAFF">Non-Teaching Staff</option>
             </select>
+            {errors.designation && <p className="text-red-500 text-[11px] mt-1 font-semibold">{errors.designation.message}</p>}
           </div>
         </div>
 
@@ -379,21 +584,36 @@ const StaffFormModal: React.FC<StaffFormModalProps> = ({ isOpen, onClose, onSucc
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div>
             <label className="block text-xs font-bold text-slate-700 uppercase mb-1.5">Mobile Contact (10 Digits) *</label>
-            <input
-              type="text"
-              maxLength={10}
-              {...register('phone')}
-              placeholder="e.g. 9825098250"
-              className="w-full p-2.5 border border-slate-300 rounded-xl text-sm font-mono focus:ring-2 focus:ring-primary-500"
-            />
+            <div className="relative">
+              <input
+                type="tel"
+                maxLength={10}
+                {...register('phone', {
+                  onChange: (e) => {
+                    const clean = e.target.value.replace(/\D/g, '').slice(0, 10);
+                    setValue('phone', clean, { shouldValidate: true, shouldDirty: true });
+                  },
+                })}
+                placeholder="e.g. 9825012345"
+                className="w-full p-2.5 border border-slate-300 rounded-xl text-sm font-mono focus:ring-2 focus:ring-primary-500"
+              />
+            </div>
             {errors.phone && <p className="text-red-500 text-[11px] mt-1 font-semibold">{errors.phone.message}</p>}
+            <p className="text-[10px] text-slate-400 mt-0.5">Strictly 10 digits without spaces or characters (starts with 6-9).</p>
           </div>
 
           <div>
             <label className="block text-xs font-bold text-slate-700 uppercase mb-1.5">Email Address (Login ID) *</label>
             <input
               type="email"
-              {...register('email')}
+              {...register('email', {
+                onChange: (e) => {
+                  const clean = e.target.value.trim().toLowerCase();
+                  if (clean !== e.target.value) {
+                    setValue('email', clean, { shouldValidate: true, shouldDirty: true });
+                  }
+                },
+              })}
               placeholder="e.g. rajesh.patel@sdjmt.edu.in"
               className="w-full p-2.5 border border-slate-300 rounded-xl text-sm focus:ring-2 focus:ring-primary-500"
             />
@@ -416,7 +636,11 @@ const StaffFormModal: React.FC<StaffFormModalProps> = ({ isOpen, onClose, onSucc
         <div className="flex items-center justify-end gap-3 pt-4 border-t border-slate-100">
           <button
             type="button"
-            onClick={() => { localStorage.removeItem('sdjm_staff_draft'); reset(); onClose(); }}
+            onClick={() => {
+              if (!initialData) localStorage.removeItem('sdjm_staff_draft');
+              reset();
+              onClose();
+            }}
             className="px-4 py-2.5 rounded-xl border border-slate-300 text-slate-700 font-bold text-xs hover:bg-slate-50 transition"
           >
             Cancel
@@ -426,7 +650,7 @@ const StaffFormModal: React.FC<StaffFormModalProps> = ({ isOpen, onClose, onSucc
             disabled={submitting || uploadingPhoto}
             className="px-6 py-2.5 rounded-xl bg-primary-600 hover:bg-primary-700 text-white font-extrabold text-xs transition shadow-lg shadow-primary-600/30 flex items-center gap-2 disabled:opacity-60"
           >
-            {submitting ? 'Saving Faculty Record...' : (initialData ? 'Save Changes' : 'Onboard Faculty & Send Credentials')}
+            {submitting ? 'Saving Faculty Record...' : initialData ? 'Save Changes' : 'Onboard Faculty & Send Credentials'}
           </button>
         </div>
       </form>

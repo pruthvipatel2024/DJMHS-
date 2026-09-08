@@ -1,10 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
-import { Users, BookOpen, CalendarCheck, ArrowLeft, Mail, Phone, MapPin, Award } from 'lucide-react';
+import { Users, BookOpen, CalendarCheck, ArrowLeft, Mail, Phone, MapPin, Award, Edit3, CheckCircle2 } from 'lucide-react';
 import api from '../../services/api';
 import LoadingSkeleton from '../../components/States/LoadingSkeleton';
 import { formatDate } from '../../utils/date.utils';
 import { getFullPhotoUrl } from '../../utils/photo.utils';
+import StaffFormModal from './StaffFormModal';
 
 const StaffProfilePage: React.FC = () => {
   const { id } = useParams<{ id: string }>();
@@ -13,19 +14,22 @@ const StaffProfilePage: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<'info' | 'teaching' | 'qualifications'>('info');
   const [imageError, setImageError] = useState(false);
+  const [showEditModal, setShowEditModal] = useState(false);
+  const [toastMsg, setToastMsg] = useState<string | null>(null);
+
+  const fetchStaff = async () => {
+    try {
+      const res = await api.get(`/staff/${id}`);
+      setStaff(res.data.data);
+      setImageError(false);
+    } catch (e) {
+      setStaff(null);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   useEffect(() => {
-    const fetchStaff = async () => {
-      try {
-        const res = await api.get(`/staff/${id}`);
-        setStaff(res.data.data);
-        setImageError(false);
-      } catch (e) {
-        setStaff(null);
-      } finally {
-        setLoading(false);
-      }
-    };
     fetchStaff();
   }, [id]);
 
@@ -36,12 +40,28 @@ const StaffProfilePage: React.FC = () => {
   return (
     <div className="space-y-6 animate-in fade-in duration-300 max-w-5xl mx-auto">
       
-      <button
-        onClick={() => navigate('/admin/staff')}
-        className="inline-flex items-center gap-2 text-xs font-bold text-slate-500 hover:text-slate-800 transition"
-      >
-        <ArrowLeft className="w-4 h-4" /> Return to Staff Directory
-      </button>
+      {toastMsg && (
+        <div className="p-4 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs font-bold flex items-center gap-2 shadow-sm">
+          <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+          {toastMsg}
+        </div>
+      )}
+
+      <div className="flex items-center justify-between">
+        <button
+          onClick={() => navigate('/admin/staff')}
+          className="inline-flex items-center gap-2 text-xs font-bold text-slate-500 hover:text-slate-800 transition"
+        >
+          <ArrowLeft className="w-4 h-4" /> Return to Staff Directory
+        </button>
+
+        <button
+          onClick={() => setShowEditModal(true)}
+          className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-primary-600 hover:bg-primary-700 text-white font-bold text-xs shadow-md shadow-primary-600/30 transition"
+        >
+          <Edit3 className="w-3.5 h-3.5" /> Edit Faculty Record
+        </button>
+      </div>
 
       {/* Profile Header Card */}
       <div className="bg-gradient-to-r from-primary-800 to-slate-900 rounded-2xl p-8 text-white shadow-xl flex flex-col md:flex-row items-start md:items-center justify-between gap-6 border border-primary-600/50">
@@ -49,7 +69,7 @@ const StaffProfilePage: React.FC = () => {
           {photoPath && !imageError ? (
             <img
               src={photoPath}
-              alt={`${staff.firstName} ${staff.lastName}`}
+              alt={`${staff?.firstName} ${staff?.lastName}`}
               onError={() => setImageError(true)}
               className="w-20 h-20 rounded-2xl object-cover border-2 border-accent-400 shadow-lg flex-shrink-0"
             />
@@ -177,6 +197,20 @@ const StaffProfilePage: React.FC = () => {
           </div>
         )}
       </div>
+
+      {showEditModal && staff && (
+        <StaffFormModal
+          isOpen={showEditModal}
+          initialData={staff}
+          onClose={() => setShowEditModal(false)}
+          onSuccess={(updated) => {
+            setStaff(updated);
+            fetchStaff();
+            setToastMsg('Staff profile updated successfully.');
+            setTimeout(() => setToastMsg(null), 4000);
+          }}
+        />
+      )}
 
     </div>
   );

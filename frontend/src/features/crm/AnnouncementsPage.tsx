@@ -7,22 +7,39 @@ import { useTranslation } from 'react-i18next';
 import CrmService from '../../services/crm.service';
 import { useAuth } from '../auth/AuthContext';
 
+import StorageService from '../../utils/storage.utils';
+import useUnsavedWarning from '../../utils/useUnsavedWarning';
+
 const AnnouncementsPage: React.FC = () => {
   const { t } = useTranslation();
   const { user } = useAuth();
   const userRole = typeof user?.role === 'string' ? user.role : (user?.role?.name || '');
   const isStaff = userRole === 'ADMIN' || userRole === 'TEACHER';
 
+  const savedDraft = StorageService.get<{ title?: string; content?: string; targetAudience?: string; sendSMSAlert?: boolean }>(
+    'sdjm_announcement_draft',
+    {}
+  );
+
   const [notices, setNotices] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   
   // Broadcast Form State
-  const [title, setTitle] = useState('');
-  const [content, setContent] = useState('');
-  const [targetAudience, setTargetAudience] = useState('ALL');
-  const [sendSMSAlert, setSendSMSAlert] = useState(true);
+  const [title, setTitle] = useState(savedDraft.title || '');
+  const [content, setContent] = useState(savedDraft.content || '');
+  const [targetAudience, setTargetAudience] = useState(savedDraft.targetAudience || 'ALL');
+  const [sendSMSAlert, setSendSMSAlert] = useState(savedDraft.sendSMSAlert !== undefined ? savedDraft.sendSMSAlert : true);
   const [submitting, setSubmitting] = useState(false);
   const [toastMsg, setToastMsg] = useState<string | null>(null);
+
+  const isDirty = !!(title || content);
+  useUnsavedWarning(isDirty, 'You have an unposted announcement in progress. Are you sure you want to refresh? Your entered text is preserved.');
+
+  useEffect(() => {
+    if (title || content) {
+      StorageService.set('sdjm_announcement_draft', { title, content, targetAudience, sendSMSAlert });
+    }
+  }, [title, content, targetAudience, sendSMSAlert]);
 
   const fetchCirculars = async () => {
     setLoading(true);
@@ -47,12 +64,13 @@ const AnnouncementsPage: React.FC = () => {
     try {
       await api.post('/crm/announcements', { title, content, targetAudience, sendSMSAlert });
       setToastMsg(`Circular "${title}" published across institutional portals! ${sendSMSAlert ? 'SMS broadcast alert fired.' : ''}`);
+      setTitle('');
+      setContent('');
+      StorageService.remove('sdjm_announcement_draft');
     } catch (e: any) {
       setToastMsg(e.response?.data?.message || 'Failed to publish circular notice. Please try again.');
     } finally {
       setSubmitting(false);
-      setTitle('');
-      setContent('');
       setTimeout(() => setToastMsg(null), 5000);
     }
   };

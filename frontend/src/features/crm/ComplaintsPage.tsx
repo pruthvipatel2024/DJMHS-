@@ -7,11 +7,19 @@ import { useTranslation } from 'react-i18next';
 import CrmService from '../../services/crm.service';
 import { useAuth } from '../auth/AuthContext';
 
+import StorageService from '../../utils/storage.utils';
+import useUnsavedWarning from '../../utils/useUnsavedWarning';
+
 const ComplaintsPage: React.FC = () => {
   const { t } = useTranslation();
   const { user } = useAuth();
   const userRole = typeof user?.role === 'string' ? user.role : (user?.role?.name || '');
   const isStaff = userRole === 'ADMIN' || userRole === 'TEACHER';
+
+  const savedDraft = StorageService.get<{ title?: string; description?: string; category?: string; priority?: string }>(
+    'sdjm_complaint_draft',
+    {}
+  );
 
   const [tickets, setTickets] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -19,11 +27,19 @@ const ComplaintsPage: React.FC = () => {
   const [showModal, setShowModal] = useState(false);
 
   // New Complaint Form State
-  const [title, setTitle] = useState('');
-  const [description, setDescription] = useState('');
-  const [category, setCategory] = useState('ACADEMIC');
-  const [priority, setPriority] = useState('NORMAL');
+  const [title, setTitle] = useState(savedDraft.title || '');
+  const [description, setDescription] = useState(savedDraft.description || '');
+  const [category, setCategory] = useState(savedDraft.category || 'ACADEMIC');
+  const [priority, setPriority] = useState(savedDraft.priority || 'NORMAL');
   const [submitting, setSubmitting] = useState(false);
+
+  useUnsavedWarning(showModal && !!(title || description), 'You have an unsubmitted complaint draft. Are you sure you want to refresh?');
+
+  useEffect(() => {
+    if (title || description) {
+      StorageService.set('sdjm_complaint_draft', { title, description, category, priority });
+    }
+  }, [title, description, category, priority]);
 
   const fetchTickets = async () => {
     setLoading(true);
@@ -51,6 +67,7 @@ const ComplaintsPage: React.FC = () => {
       setShowModal(false);
       setTitle('');
       setDescription('');
+      StorageService.remove('sdjm_complaint_draft');
       fetchTickets();
     } catch (e: any) {
       setToastMsg(e.response?.data?.message || 'Failed to submit grievance ticket. Please try again.');

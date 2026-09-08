@@ -1,15 +1,22 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
-import { BookOpenCheck, Save, ArrowLeft, CheckCircle2, AlertCircle, Check } from 'lucide-react';
+import { BookOpenCheck, Save, ArrowLeft, CheckCircle2, AlertCircle, Check, Sparkles, RotateCcw } from 'lucide-react';
 import api from '../../services/api';
 import LoadingSkeleton from '../../components/States/LoadingSkeleton';
+import StorageService from '../../utils/storage.utils';
+import useUnsavedWarning from '../../utils/useUnsavedWarning';
 
 const ExamMarksEntryPage: React.FC = () => {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
   const examId = searchParams.get('examId') || '';
-  const [selectedSubject, setSelectedSubject] = useState<string>('');
-  const [selectedDivision, setSelectedDivision] = useState<string>('');
+
+  const savedFilters = useMemo(() => {
+    return examId ? StorageService.get<{ subject?: string; division?: string }>(`sdjm_marks_filters_${examId}`, {}) : {};
+  }, [examId]);
+
+  const [selectedSubject, setSelectedSubject] = useState<string>(savedFilters.subject || 'sub_acc');
+  const [selectedDivision, setSelectedDivision] = useState<string>(savedFilters.division || '');
   
   const [divisions, setDivisions] = useState<any[]>([]);
   const [roster, setRoster] = useState<any[]>([]);
@@ -17,6 +24,28 @@ const ExamMarksEntryPage: React.FC = () => {
   const [submitting, setSubmitting] = useState(false);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+
+  const [isDirty, setIsDirty] = useState(false);
+  const [draftRestored, setDraftRestored] = useState(false);
+
+  // Warn on accidental tab close or page refresh if unsaved marks exist
+  useUnsavedWarning(isDirty, 'You have unsubmitted marks entered in this examination register. Are you sure you want to refresh? Your entered scores have been preserved.');
+
+  const marksDraftKey = useMemo(() => {
+    return examId && selectedSubject && selectedDivision
+      ? `sdjm_marks_draft_${examId}_${selectedSubject}_${selectedDivision}`
+      : null;
+  }, [examId, selectedSubject, selectedDivision]);
+
+  // Persist active subject & division filters
+  useEffect(() => {
+    if (examId && (selectedSubject || selectedDivision)) {
+      StorageService.set(`sdjm_marks_filters_${examId}`, {
+        subject: selectedSubject,
+        division: selectedDivision,
+      });
+    }
+  }, [examId, selectedSubject, selectedDivision]);
 
   // Helper for live Grade preview in browser
   const computeLiveGrade = (val: string | number, max: number = 100) => {
@@ -39,47 +68,104 @@ const ExamMarksEntryPage: React.FC = () => {
         const list: any[] = [];
         if (res.data?.data?.standards) {
           res.data.data.standards.forEach((std: any) => {
-            std.divisions.forEach((div: any) => {
+            std.divisions?.forEach((div: any) => {
               list.push({ id: div.id, name: `${std.name} — Division ${div.name}` });
             });
           });
         }
         setDivisions(list);
-        if (list.length > 0 && !selectedDivision) setSelectedDivision(list[0].id);
+        if (list.length > 0) {
+          const defaultDiv = savedFilters.division && list.some(d => d.id === savedFilters.division)
+            ? savedFilters.division
+            : list[0].id;
+          setSelectedDivision(defaultDiv);
+        }
       } catch (e) {
         setDivisions([]);
       }
     };
     fetchMetadata();
-  }, []);
+  }, [savedFilters.division]);
+
+  const fetchMarkSheet = useCallback(async () => {
+    if (!examId || !selectedDivision) return;
+    setLoading(true);
+    setErrorMsg(null);
+    try {
+      const res = await api.get('/exams/marksheet', { params: { examId, subjectId: selectedSubject, divisionId: selectedDivision } });
+      let currentRoster = res.data.data.roster || [];
+
+      // Check for cached in-progress marks draft
+      const currentDraftKey = `sdjm_marks_draft_${examId}_${selectedSubject}_${selectedDivision}`;
+      const savedDraft = StorageService.get<Record<string, { marksObtained?: string | number; remarks?: string }> | null>(currentDraftKey, null);
+
+      if (savedDraft && Object.keys(savedDraft).length > 0) {
+        currentRoster = currentRoster.map((item: any) => {
+          const draftItem = savedDraft[item.studentId];
+          if (draftItem) {
+            return {
+              ...item,
+              marksObtained: draftItem.marksObtained !== undefined ? draftItem.marksObtained : item.marksObtained,
+              remarks: draftItem.remarks !== undefined ? draftItem.remarks : item.remarks,
+            };
+          }
+          return item;
+        });
+        setDraftRestored(true);
+        setIsDirty(true);
+      } else {
+        setDraftRestored(false);
+        setIsDirty(false);
+      }
+
+      setRoster(currentRoster);
+    } catch (e: any) {
+      setRoster([]);
+      setErrorMsg(e.response?.data?.message || 'Unable to load examination mark sheet for selected division.');
+    } finally {
+      setLoading(false);
+    }
+  }, [examId, selectedSubject, selectedDivision]);
 
   useEffect(() => {
-    if (!examId || !selectedDivision) return;
-    const fetchMarkSheet = async () => {
-      setLoading(true);
-      setErrorMsg(null);
-      try {
-        const res = await api.get('/exams/marksheet', { params: { examId, subjectId: selectedSubject, divisionId: selectedDivision } });
-        setRoster(res.data.data.roster || []);
-      } catch (e: any) {
-        setRoster([]);
-        setErrorMsg(e.response?.data?.message || 'Unable to load examination mark sheet for selected division.');
-      } finally {
-        setLoading(false);
-      }
-    };
     fetchMarkSheet();
-  }, [examId, selectedSubject, selectedDivision]);
+  }, [fetchMarkSheet]);
+
+  const saveDraftToStorage = (updatedRoster: any[]) => {
+    if (marksDraftKey) {
+      const draftMap: Record<string, { marksObtained: any; remarks: string }> = {};
+      updatedRoster.forEach((r) => {
+        draftMap[r.studentId] = {
+          marksObtained: r.marksObtained,
+          remarks: r.remarks || '',
+        };
+      });
+      StorageService.set(marksDraftKey, draftMap);
+      setIsDirty(true);
+    }
+  };
+
+  const handleDiscardDraft = () => {
+    if (marksDraftKey) {
+      StorageService.remove(marksDraftKey);
+    }
+    setDraftRestored(false);
+    setIsDirty(false);
+    fetchMarkSheet();
+  };
 
   const updateMark = (studentId: string, val: string) => {
     const num = Number(val);
     if (val !== '' && (isNaN(num) || num < 0 || num > 100)) return;
     const newRoster = roster.map(item => item.studentId === studentId ? { ...item, marksObtained: val } : item);
     setRoster(newRoster);
+    saveDraftToStorage(newRoster);
   };
 
   const updateRemarks = (studentId: string, text: string) => {
-    setRoster(prev => prev.map(item => item.studentId === studentId ? { ...item, remarks: text } : item));
+    const newRoster = roster.map(item => item.studentId === studentId ? { ...item, remarks: text } : item);
+    setRoster(newRoster);
+    saveDraftToStorage(newRoster);
   };
 
   const handleSave = async () => {
@@ -92,6 +178,13 @@ const ExamMarksEntryPage: React.FC = () => {
         subjectId: selectedSubject,
         records: roster.map(r => ({ studentId: r.studentId, marksObtained: r.marksObtained, maxMarks: r.maxMarks, remarks: r.remarks || '' }))
       });
+
+      if (marksDraftKey) {
+        StorageService.remove(marksDraftKey);
+      }
+      setIsDirty(false);
+      setDraftRestored(false);
+
       setSuccessMsg('Scores saved successfully into PostgreSQL database!');
       setTimeout(() => setSuccessMsg(null), 5000);
     } catch (e: any) {
@@ -114,6 +207,25 @@ const ExamMarksEntryPage: React.FC = () => {
       {successMsg && (
         <div className="p-4 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs font-bold flex items-center gap-2 shadow-xs">
           <CheckCircle2 className="w-5 h-5 text-emerald-600" /> {successMsg}
+        </div>
+      )}
+
+      {draftRestored && (
+        <div className="p-4 rounded-xl bg-indigo-50 border border-indigo-200 text-indigo-900 text-xs font-bold flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-xs">
+          <div className="flex items-center gap-2.5">
+            <Sparkles className="w-5 h-5 text-indigo-600 flex-shrink-0" />
+            <div>
+              <span className="font-extrabold block">In-Progress Examination Marks Draft Restored</span>
+              <span className="font-medium text-indigo-700">Your previously entered scores and faculty remarks have been restored across page refresh. Click "Save Marks Entry" when finished.</span>
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={handleDiscardDraft}
+            className="px-3.5 py-1.5 rounded-lg bg-white hover:bg-slate-100 text-slate-700 border border-slate-300 font-bold text-xs whitespace-nowrap shadow-xs flex items-center gap-1.5 self-start sm:self-auto"
+          >
+            <RotateCcw className="w-3.5 h-3.5 text-slate-500" /> Discard Draft
+          </button>
         </div>
       )}
 

@@ -13,7 +13,7 @@ const config = {
   },
   uploadDir: process.env.UPLOAD_DIR || '../uploads',
   email: {
-    provider: 'resend',
+    provider: process.env.EMAIL_PROVIDER || 'smtp',
     resendApiKey: process.env.RESEND_API_KEY || '',
     resendFromEmail: process.env.RESEND_FROM_EMAIL || '',
     mock: process.env.MOCK_COMMUNICATIONS_TO_LOG === 'true',

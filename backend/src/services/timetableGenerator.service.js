@@ -25,16 +25,31 @@ const generateTimetableDraft = async (params = {}) => {
     yearId = fallbackYear?.id;
   }
 
-  // 2. Fetch all Divisions, Subjects, and Staff
+  // 2. Fetch all Divisions with their Standard, Standard-wise Subjects, and Staff-Subject-Division Allocations
   const divisions = await prisma.division.findMany({
-    include: { standard: true, subjects: true },
+    include: {
+      standard: {
+        include: {
+          subjects: { orderBy: { code: 'asc' } },
+        },
+      },
+      subjectMappings: {
+        include: {
+          staff: true,
+          subject: true,
+        },
+      },
+    },
   });
 
   const staffMembers = await prisma.staff.findMany({
     include: { department: true },
   });
 
-  const allSubjects = await prisma.subject.findMany();
+  const allSubjects = await prisma.subject.findMany({
+    include: { standard: true },
+    orderBy: { code: 'asc' },
+  });
 
   if (divisions.length === 0 || staffMembers.length === 0) {
     throw new Error('Insufficient database records: At least 1 division and 1 staff member required to generate timetable.');
@@ -57,7 +72,11 @@ const generateTimetableDraft = async (params = {}) => {
 
   // Loop through each division, day, and period to assign balanced subjects & teachers
   for (const division of divisions) {
-    const divSubjects = division.subjects.length > 0 ? division.subjects : allSubjects;
+    // 1. Get standard-wise subjects for this class
+    const standardSubjects = (division.standard?.subjects && division.standard.subjects.length > 0)
+      ? division.standard.subjects
+      : allSubjects;
+
     const roomNumber = division.roomNumber || `Room-${division.name}`;
 
     for (const day of days) {
@@ -66,13 +85,37 @@ const generateTimetableDraft = async (params = {}) => {
         const periodNumber = slotConfig.periodNumber;
 
         // Pick a subject sequentially to balance daily frequency
-        const subject = divSubjects[(pIdx + days.indexOf(day)) % divSubjects.length] || allSubjects[0];
+        const subject = standardSubjects[(pIdx + days.indexOf(day)) % standardSubjects.length] || standardSubjects[0];
 
-        // Find available faculty member for this subject/department
-        let assignedStaff = staffMembers.find((st) => {
-          const bookingKey = `${st.id}:${day}:${periodNumber}`;
-          return !teacherBookings.has(bookingKey);
-        });
+        // 2. Check if a dedicated teacher is allocated for this subject in this division
+        const allocatedMapping = division.subjectMappings.find((m) => m.subjectId === subject.id);
+        let assignedStaff = null;
+
+        if (allocatedMapping && allocatedMapping.staff) {
+          const bookingKey = `${allocatedMapping.staff.id}:${day}:${periodNumber}`;
+          if (!teacherBookings.has(bookingKey)) {
+            assignedStaff = allocatedMapping.staff;
+          } else {
+            // Teacher is teaching in another class during this period
+            conflicts.push({
+              type: 'TEACHER_CLASH_WARNING',
+              severity: 'WARN',
+              day,
+              periodNumber,
+              message: `Allocated teacher ${allocatedMapping.staff.firstName} ${allocatedMapping.staff.lastName} for ${subject.name} in ${division.standard?.name} (${division.name}) is occupied in another classroom during ${day} Period ${periodNumber}.`,
+            });
+            // Try to find an available substitute or assign anyway with warning
+            assignedStaff = staffMembers.find((st) => !teacherBookings.has(`${st.id}:${day}:${periodNumber}`)) || allocatedMapping.staff;
+          }
+        }
+
+        // If no teacher allocation was configured, find any available faculty member
+        if (!assignedStaff) {
+          assignedStaff = staffMembers.find((st) => {
+            const bookingKey = `${st.id}:${day}:${periodNumber}`;
+            return !teacherBookings.has(bookingKey);
+          });
+        }
 
         if (!assignedStaff) {
           assignedStaff = staffMembers[0]; // Fallback if tight teacher pool
@@ -103,7 +146,7 @@ const generateTimetableDraft = async (params = {}) => {
         draftSlots.push({
           tempId: `draft_${division.id}_${day}_${periodNumber}`,
           divisionId: division.id,
-          divisionName: `${division.standard.name} — Div ${division.name}`,
+          divisionName: `${division.standard?.name || 'Class'} — Div ${division.name}`,
           academicYearId: yearId,
           subjectId: subject.id,
           subjectName: subject.name,

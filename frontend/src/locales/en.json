@@ -208,5 +208,18 @@
   "add_dept_btn": "+ Add Department",
   "standards_divisions_title": "Academic Standard Tiers & Divisions",
   "add_std_btn": "+ Add Standard",
-  "add_div_btn": "+ Add Division"
+  "add_div_btn": "+ Add Division",
+  "subjects_tab": "Subjects & Curriculum ({{count}})",
+  "allocations_tab": "Teacher Subject Allocations",
+  "manage_subjects_title": "Standard-Wise Subject Curriculum",
+  "manage_subjects_subtitle": "Manage Gujarat Board curriculum subjects for High School and Higher Secondary Commerce streams.",
+  "add_subject_btn": "+ Add Standard Subject",
+  "teacher_allocations_title": "Class-Wise & Standard-Wise Teacher Allocation",
+  "teacher_allocations_subtitle": "Assign specialized teachers to subjects across multiple standards and divisions with cross-class workload tracking.",
+  "save_class_allocations_btn": "Save Class Teacher Allocations",
+  "select_standard_division": "Select Standard & Class Division",
+  "assigned_teacher": "Assigned Teacher",
+  "no_teacher_assigned": "No Teacher Assigned",
+  "optional_elective": "Optional / Elective",
+  "compulsory_core": "Compulsory Core"
 }

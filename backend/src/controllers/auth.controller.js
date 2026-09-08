@@ -8,19 +8,36 @@ const { requestStudentOtp, verifyStudentOtp } = require('../services/otp.service
 const login = async (req, res, next) => {
   try {
     const { identifier, password, rememberMe } = req.body;
+    const cleanId = (identifier || '').trim();
+    const cleanPass = password;
 
-    // Resolve user by Email, Phone, Employee ID, or GR Number per PRD Chapter 1.6.1
+    // Resolve user by Email, Phone, Employee ID, or GR Number per PRD Chapter 1.6.1 (Case-Insensitive)
     const user = await prisma.user.findFirst({
       where: {
         OR: [
-          { identifier: identifier },
-          { email: identifier },
-          { phone: identifier },
+          { identifier: { equals: cleanId, mode: 'insensitive' } },
+          { email: { equals: cleanId, mode: 'insensitive' } },
+          { phone: cleanId },
+          { staffProfile: { empId: { equals: cleanId, mode: 'insensitive' } } },
+          { staffProfile: { email: { equals: cleanId, mode: 'insensitive' } } },
+          { staffProfile: { phone: cleanId } },
+          { studentProfile: { grNumber: { equals: cleanId, mode: 'insensitive' } } },
         ],
       },
       include: {
         role: true,
-        staffProfile: { include: { department: true } },
+        staffProfile: {
+          include: {
+            department: true,
+            classTeaching: {
+              include: {
+                division: {
+                  include: { standard: true }
+                }
+              }
+            }
+          }
+        },
         studentProfile: { include: { division: { include: { standard: true } } } },
         parentProfile: {
           include: {
@@ -40,7 +57,7 @@ const login = async (req, res, next) => {
 
     // Account active check
     if (!user.isActive || user.deletedAt !== null) {
-      return res.status(403).json({ success: false, error: 'Account Suspended', message: 'Please contact the school administrative office.' });
+      return res.status(403).json({ success: false, error: 'Account Suspended', message: 'Your account is currently inactive. Please contact the school administrative office.' });
     }
 
     // Check account lockout status (5 consecutive failed attempts lock for 15 mins per PRD Chapter 1.8)

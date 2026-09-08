@@ -55,18 +55,55 @@ const setTimetableSlot = async (req, res, next) => {
       return res.status(400).json({ success: false, error: 'Incomplete Slot', message: 'Division, subject, teacher, day, and period number required.' });
     }
 
+    const cleanDay = String(dayOfWeek).slice(0, 3).toUpperCase();
+    const cleanPeriod = Number(periodNumber);
+
     let yearId = academicYearId;
     if (!yearId) {
       const currentYear = await prisma.academicYear.findFirst({ where: { isCurrent: true } });
       yearId = currentYear?.id || (await prisma.academicYear.findFirst())?.id;
     }
 
+    // Resolve subject ID if subject name was passed or verify subject exists
+    let resolvedSubjectId = subjectId;
+    let existingSubject = await prisma.subject.findUnique({ where: { id: subjectId } });
+    
+    if (!existingSubject) {
+      // Find division standard to look up or create subject
+      const division = await prisma.division.findUnique({ where: { id: divisionId }, include: { standard: true } });
+      if (division) {
+        existingSubject = await prisma.subject.findFirst({
+          where: {
+            standardId: division.standardId,
+            OR: [
+              { name: { equals: String(subjectId).trim(), mode: 'insensitive' } },
+              { code: { equals: String(subjectId).trim().toUpperCase() } },
+            ],
+          },
+        });
+
+        if (!existingSubject) {
+          // Auto create subject for this standard
+          const acronym = String(subjectId).trim().split(' ').map((w) => w[0]).join('').slice(0, 4).toUpperCase();
+          const cleanCode = `${acronym}-${division.standard.level || '00'}-${Math.floor(100 + Math.random() * 900)}`;
+          existingSubject = await prisma.subject.create({
+            data: {
+              standardId: division.standardId,
+              name: String(subjectId).trim(),
+              code: cleanCode,
+            },
+          });
+        }
+        resolvedSubjectId = existingSubject.id;
+      }
+    }
+
     // Teacher Clash Detection (PRD Chapter 7)
     const existingClash = await prisma.timetable.findFirst({
       where: {
         staffId,
-        dayOfWeek,
-        periodNumber: Number(periodNumber),
+        dayOfWeek: cleanDay,
+        periodNumber: cleanPeriod,
         id: id ? { not: id } : undefined,
       },
       include: { division: { include: { standard: true } }, subject: true },
@@ -77,7 +114,7 @@ const setTimetableSlot = async (req, res, next) => {
       return res.status(409).json({
         success: false,
         error: 'Teacher Schedule Clash',
-        message: `System Alert: Designated teacher is already assigned to teach '${existingClash.subject.name}' in ${clashDiv} on ${dayOfWeek} Period ${periodNumber}.`,
+        message: `System Alert: Designated teacher is already assigned to teach '${existingClash.subject.name}' in ${clashDiv} on ${cleanDay} Period ${cleanPeriod}.`,
       });
     }
 
@@ -85,19 +122,19 @@ const setTimetableSlot = async (req, res, next) => {
     if (id) {
       slot = await prisma.timetable.update({
         where: { id },
-        data: { divisionId, subjectId, staffId, dayOfWeek, periodNumber: Number(periodNumber), startTime: startTime || '08:00 AM', endTime: endTime || '08:45 AM', roomNumber },
+        data: { divisionId, subjectId: resolvedSubjectId, staffId, dayOfWeek: cleanDay, periodNumber: cleanPeriod, startTime: startTime || '08:00 AM', endTime: endTime || '08:45 AM', roomNumber },
         include: { subject: true, staff: true },
       });
     } else {
       slot = await prisma.timetable.create({
-        data: { divisionId, subjectId, staffId, academicYearId: yearId, dayOfWeek, periodNumber: Number(periodNumber), startTime: startTime || '08:00 AM', endTime: endTime || '08:45 AM', roomNumber },
+        data: { divisionId, subjectId: resolvedSubjectId, staffId, academicYearId: yearId, dayOfWeek: cleanDay, periodNumber: cleanPeriod, startTime: startTime || '08:00 AM', endTime: endTime || '08:45 AM', roomNumber },
         include: { subject: true, staff: true },
       });
     }
 
     res.status(200).json({
       success: true,
-      message: `Timetable slot assigned successfully for ${dayOfWeek} Period ${periodNumber}.`,
+      message: `Timetable slot assigned successfully for ${cleanDay} Period ${cleanPeriod}.`,
       data: slot,
     });
   } catch (err) {

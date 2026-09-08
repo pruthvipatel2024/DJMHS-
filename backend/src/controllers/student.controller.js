@@ -16,8 +16,9 @@ const getAllStudents = async (req, res, next) => {
 
     if (divisionId && divisionId !== 'all' && divisionId !== 'undefined' && divisionId.trim() !== '') {
       where.divisionId = divisionId;
-    } else if (standardId && standardId !== 'all' && standardId !== 'undefined' && standardId.trim() !== '') {
-      where.division = { standardId: standardId };
+    }
+    if (standardId && standardId !== 'all' && standardId !== 'undefined' && standardId.trim() !== '') {
+      where.division = { ...(where.division || {}), standardId: standardId };
     }
 
     if (search) {
@@ -363,14 +364,19 @@ const updateStudent = async (req, res, next) => {
     } = req.body;
 
     const studentData = {};
-    if (firstName) studentData.firstName = firstName;
-    if (lastName) studentData.lastName = lastName;
+    if (firstName) studentData.firstName = firstName.trim();
+    if (lastName) studentData.lastName = lastName.trim();
     if (gender) studentData.gender = gender;
-    if (dob) studentData.dob = new Date(dob);
-    if (bloodGroup !== undefined) studentData.bloodGroup = bloodGroup || null;
-    if (rollNumber) studentData.rollNumber = rollNumber;
-    if (allergies !== undefined) studentData.allergies = allergies || null;
-    if (emergencyContact !== undefined) studentData.emergencyContact = emergencyContact || null;
+    if (dob) {
+      const parsedDob = new Date(dob);
+      if (!isNaN(parsedDob.getTime())) {
+        studentData.dob = parsedDob;
+      }
+    }
+    if (bloodGroup !== undefined) studentData.bloodGroup = bloodGroup ? bloodGroup.trim() : null;
+    if (rollNumber !== undefined) studentData.rollNumber = rollNumber ? String(rollNumber).trim() : '';
+    if (allergies !== undefined) studentData.allergies = allergies ? allergies.trim() : null;
+    if (emergencyContact !== undefined) studentData.emergencyContact = emergencyContact ? emergencyContact.trim() : null;
     if (photoUrl !== undefined) studentData.photoUrl = photoUrl || null;
 
     if (req.file) {
@@ -380,7 +386,7 @@ const updateStudent = async (req, res, next) => {
 
     if (divisionId) {
       const targetDiv = await prisma.division.findFirst({
-        where: { OR: [{ id: divisionId }, { name: { contains: divisionId, mode: 'insensitive' } }] },
+        where: { OR: [{ id: divisionId }, { name: divisionId }] },
       });
       if (targetDiv) {
         studentData.division = { connect: { id: targetDiv.id } };
@@ -388,49 +394,164 @@ const updateStudent = async (req, res, next) => {
     }
 
     const updated = await prisma.$transaction(async (tx) => {
+      const existingStudent = await tx.student.findUnique({
+        where: { id },
+        include: {
+          parents: { include: { parent: { include: { user: true } } } },
+        },
+      });
+
+      if (!existingStudent) {
+        throw new Error('Student record not found.');
+      }
+
       const updatedStudent = await tx.student.update({
         where: { id },
         data: studentData,
         include: {
           division: { include: { standard: true } },
-          parents: { include: { parent: true } },
+          parents: { include: { parent: { include: { user: true } } } },
         },
       });
 
+      const parentFullName = [parentFirstName, parentLastName].filter(Boolean).join(' ').trim();
+      const cleanPhone = (parentPhone && parentPhone.trim()) ? parentPhone.trim() : null;
+      const cleanEmail = (parentEmail && parentEmail.trim()) ? parentEmail.trim() : null;
+      const cleanAddress = (address && address.trim()) ? address.trim() : null;
+      const rel = (relationship || 'Father').trim();
+      const isMother = rel.toLowerCase() === 'mother';
+      const isGuardian = rel.toLowerCase() === 'guardian';
+
       const parentMapping = updatedStudent.parents?.[0];
-      if (parentMapping?.parentId) {
-        const parentFullName = [parentFirstName, parentLastName].filter(Boolean).join(' ');
-        const rel = (relationship || parentMapping.relationship || 'Father').trim();
-        const isMother = rel.toLowerCase() === 'mother';
-        const isGuardian = rel.toLowerCase() === 'guardian';
+
+      if (parentMapping?.parent) {
+        const parentId = parentMapping.parentId;
+        const parentRecord = parentMapping.parent;
 
         const parentUpdateData = {};
         if (parentFullName) {
-          if (isMother) parentUpdateData.motherName = parentFullName;
-          else if (isGuardian) parentUpdateData.guardianName = parentFullName;
-          else parentUpdateData.fatherName = parentFullName;
+          if (isMother) {
+            parentUpdateData.motherName = parentFullName;
+          } else if (isGuardian) {
+            parentUpdateData.guardianName = parentFullName;
+          } else {
+            parentUpdateData.fatherName = parentFullName;
+          }
         }
-        if (parentPhone) parentUpdateData.phone = parentPhone;
-        if (parentEmail !== undefined) parentUpdateData.email = parentEmail || null;
-        if (address !== undefined) parentUpdateData.address = address || null;
+        if (cleanPhone) parentUpdateData.phone = cleanPhone;
+        if (cleanEmail !== undefined) parentUpdateData.email = cleanEmail;
+        if (cleanAddress !== undefined) parentUpdateData.address = cleanAddress;
         if (rel) parentUpdateData.relationship = rel;
 
         if (Object.keys(parentUpdateData).length > 0) {
           await tx.parent.update({
-            where: { id: parentMapping.parentId },
+            where: { id: parentId },
             data: parentUpdateData,
           });
         }
 
+        // Update Parent's User account if phone or email changed
+        if (parentRecord.userId && (cleanPhone || cleanEmail)) {
+          const userUpdateData = {};
+          if (cleanPhone) {
+            userUpdateData.phone = cleanPhone;
+            if (!parentRecord.email && !cleanEmail) userUpdateData.identifier = cleanPhone;
+          }
+          if (cleanEmail) {
+            userUpdateData.email = cleanEmail;
+            userUpdateData.identifier = cleanEmail;
+          }
+          await tx.user.update({
+            where: { id: parentRecord.userId },
+            data: userUpdateData,
+          }).catch((err) => console.warn('Parent user update warning:', err.message));
+        }
+
         if (rel) {
           await tx.studentParentMapping.updateMany({
-            where: { studentId: id, parentId: parentMapping.parentId },
+            where: { studentId: id, parentId },
             data: { relationship: rel },
           });
         }
+      } else if (parentFullName || cleanPhone || cleanEmail || cleanAddress) {
+        // No parent mapped yet: find or create Parent record
+        let parent = null;
+        if (cleanPhone || cleanEmail) {
+          parent = await tx.parent.findFirst({
+            where: {
+              OR: [
+                ...(cleanPhone ? [{ phone: cleanPhone }] : []),
+                ...(cleanEmail ? [{ email: cleanEmail }] : []),
+              ],
+            },
+          });
+        }
+
+        if (!parent) {
+          const parentRole = await tx.role.findUnique({ where: { name: 'PARENT' } });
+          const defaultPassword = 'Password@123';
+          const defaultPasswordHash = await hashPassword(defaultPassword);
+          const pIdentifier = cleanEmail || cleanPhone || `parent_${updatedStudent.grNumber.toLowerCase()}`;
+
+          let existingParentUser = await tx.user.findFirst({
+            where: {
+              OR: [
+                { identifier: pIdentifier },
+                ...(cleanEmail ? [{ email: cleanEmail }] : []),
+                ...(cleanPhone ? [{ phone: cleanPhone }] : []),
+              ],
+            },
+          });
+
+          let parentUserId = existingParentUser ? existingParentUser.id : null;
+          if (!parentUserId && parentRole) {
+            const parentUser = await tx.user.create({
+              data: {
+                identifier: pIdentifier,
+                email: cleanEmail,
+                phone: cleanPhone,
+                passwordHash: defaultPasswordHash,
+                roleId: parentRole.id,
+                isActive: true,
+                isFirstLogin: true,
+              },
+            });
+            parentUserId = parentUser.id;
+          }
+
+          parent = await tx.parent.create({
+            data: {
+              userId: parentUserId,
+              fatherName: (!isMother && !isGuardian) ? (parentFullName || 'Father') : null,
+              motherName: isMother ? (parentFullName || 'Mother') : null,
+              guardianName: isGuardian ? (parentFullName || 'Guardian') : null,
+              phone: cleanPhone || `P-${Date.now()}`,
+              email: cleanEmail,
+              address: cleanAddress || 'Bhavnagar, Gujarat',
+              relationship: rel,
+            },
+          });
+        }
+
+        // Link student and parent
+        await tx.studentParentMapping.create({
+          data: {
+            studentId: id,
+            parentId: parent.id,
+            relationship: rel,
+            isPrimary: true,
+          },
+        });
       }
 
-      return updatedStudent;
+      // Re-fetch complete updated student
+      return tx.student.findUnique({
+        where: { id },
+        include: {
+          division: { include: { standard: true } },
+          parents: { include: { parent: { include: { user: true } } } },
+        },
+      });
     });
 
     res.status(200).json({ success: true, message: 'Student record updated successfully.', data: updated });
@@ -481,55 +602,149 @@ const promoteStudents = async (req, res, next) => {
       return res.status(400).json({ success: false, error: 'Target Required', message: 'Target standard division must be designated.' });
     }
 
-    const targetDivision = await prisma.division.findUnique({
-      where: { id: targetDivisionId },
-      include: { standard: true },
-    });
+    // Handle graduation / alumni archive special target
+    const isGraduation = targetDivisionId === 'GRADUATED' || targetDivisionId === 'graduated_alumni';
 
-    if (!targetDivision) {
-      return res.status(404).json({ success: false, error: 'Division Not Found', message: 'Target academic division does not exist.' });
+    let targetDivision = null;
+    if (!isGraduation) {
+      targetDivision = await prisma.division.findFirst({
+        where: {
+          OR: [
+            { id: targetDivisionId },
+            { name: targetDivisionId },
+          ],
+        },
+        include: { standard: true },
+      });
+
+      if (!targetDivision) {
+        return res.status(404).json({ success: false, error: 'Division Not Found', message: 'Target academic division does not exist.' });
+      }
     }
 
     let currentYear = await prisma.academicYear.findFirst({ where: { isCurrent: true } });
-    const activeYearId = academicYearId || currentYear?.id;
+    if (!currentYear) {
+      currentYear = await prisma.academicYear.findFirst({ orderBy: { startDate: 'desc' } });
+    }
+    if (!currentYear) {
+      currentYear = await prisma.academicYear.create({
+        data: {
+          name: '2026-2027',
+          isCurrent: true,
+          startDate: new Date('2026-06-01'),
+          endDate: new Date('2027-04-30'),
+        },
+      });
+    }
+    const activeYearId = academicYearId || currentYear.id;
 
     let promotedCount = 0;
     await prisma.$transaction(async (tx) => {
       for (const stdId of studentIds) {
         const currentStudent = await tx.student.findUnique({
           where: { id: stdId },
-          include: { division: true },
+          include: { division: { include: { standard: true } } },
         });
         if (!currentStudent) continue;
 
-        // Archive previous standard in StudentAcademicHistory per PRD Chapter 4
-        if (currentStudent.divisionId && activeYearId) {
-          await tx.studentAcademicHistory.create({
-            data: {
-              studentId: stdId,
-              academicYearId: activeYearId,
-              standardId: currentStudent.division.standardId,
-              divisionName: currentStudent.division.name,
-              finalStatus: 'PROMOTED',
+        if (isGraduation) {
+          if (currentStudent.divisionId && activeYearId) {
+            await tx.studentAcademicHistory.create({
+              data: {
+                studentId: stdId,
+                academicYearId: activeYearId,
+                fromDivisionId: currentStudent.divisionId,
+                toDivisionId: currentStudent.divisionId,
+                promotionStatus: 'PROMOTED',
+                remarks: 'Graduated / Alumni Archive (Standard 12 Completed)',
+              },
+            });
+          }
+          await tx.student.update({
+            where: { id: stdId },
+            data: { status: 'GRADUATED' },
+          });
+          promotedCount++;
+        } else {
+          // Resolve roll number conflict in destination division
+          let targetRoll = currentStudent.rollNumber || '01';
+          let rollConflict = await tx.student.findFirst({
+            where: {
+              divisionId: targetDivision.id,
+              rollNumber: targetRoll,
+              status: 'ACTIVE',
+              deletedAt: null,
+              id: { not: stdId },
             },
           });
-        }
 
-        // Migrate student to new division
-        await tx.student.update({
-          where: { id: stdId },
-          data: {
-            divisionId: targetDivisionId,
-            status: 'ACTIVE',
-          },
-        });
-        promotedCount++;
+          if (rollConflict) {
+            const existingStudentsInDiv = await tx.student.findMany({
+              where: {
+                divisionId: targetDivision.id,
+                status: 'ACTIVE',
+                deletedAt: null,
+                id: { not: stdId },
+              },
+              select: { rollNumber: true },
+            });
+            let maxVal = 0;
+            existingStudentsInDiv.forEach((s) => {
+              const p = parseInt(s.rollNumber, 10);
+              if (!isNaN(p) && p > maxVal) maxVal = p;
+            });
+            targetRoll = String(maxVal + 1).padStart(2, '0');
+          }
+
+          // Archive previous standard in StudentAcademicHistory per PRD Chapter 4
+          if (currentStudent.divisionId && activeYearId) {
+            await tx.studentAcademicHistory.create({
+              data: {
+                studentId: stdId,
+                academicYearId: activeYearId,
+                fromDivisionId: currentStudent.divisionId,
+                toDivisionId: targetDivision.id,
+                promotionStatus: 'PROMOTED',
+                remarks: `Promoted from ${currentStudent.division?.standard?.name || 'Previous Standard'} (Div ${currentStudent.division?.name || 'A'}) to ${targetDivision.standard?.name || 'Standard'} (Div ${targetDivision.name})`,
+              },
+            });
+          }
+
+          // Migrate student to new division
+          await tx.student.update({
+            where: { id: stdId },
+            data: {
+              divisionId: targetDivision.id,
+              rollNumber: targetRoll,
+              status: 'ACTIVE',
+            },
+          });
+          promotedCount++;
+        }
       }
     });
 
+    // Record Audit Log
+    if (req.user) {
+      await prisma.auditLog.create({
+        data: {
+          userId: req.user.id,
+          actorName: req.user.identifier || 'ADMIN',
+          action: isGraduation ? 'STUDENTS_GRADUATED' : 'STUDENTS_PROMOTED',
+          entity: 'STUDENT',
+          reason: isGraduation
+            ? `Graduated ${promotedCount} students to alumni archive.`
+            : `Promoted ${promotedCount} students into ${targetDivision.standard.name} (Division ${targetDivision.name}).`,
+          ipAddress: req.ip || null,
+        },
+      }).catch(() => {});
+    }
+
     res.status(200).json({
       success: true,
-      message: `Academic promotion complete! ${promotedCount} students successfully promoted into ${targetDivision.standard.name} (Division ${targetDivision.name}).`,
+      message: isGraduation
+        ? `Academic cohort graduation complete! ${promotedCount} students migrated to alumni status.`
+        : `Academic promotion complete! ${promotedCount} students successfully promoted into ${targetDivision.standard.name} (Division ${targetDivision.name}).`,
       data: { promotedCount, targetDivision },
     });
   } catch (err) {

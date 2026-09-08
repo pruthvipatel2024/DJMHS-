@@ -7,14 +7,22 @@ import LoadingSkeleton from '../../components/States/LoadingSkeleton';
 import { useTranslation } from 'react-i18next';
 import FeeService from '../../services/fees.service';
 
+import StorageService from '../../utils/storage.utils';
+
 const FeeCollectionPage: React.FC = () => {
   const { t } = useTranslation();
-  const [activeTab, setActiveTab] = useState<'all' | 'defaulters'>('all');
+  const [activeTab, setActiveTab] = useState<'all' | 'defaulters'>(
+    StorageService.get('sdjm_fees_tab', 'all')
+  );
   const [installments, setInstallments] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedReceipt, setSelectedReceipt] = useState<any | null>(null);
   const [collectingId, setCollectingId] = useState<string | null>(null);
   const [toastMsg, setToastMsg] = useState<string | null>(null);
+
+  useEffect(() => {
+    StorageService.set('sdjm_fees_tab', activeTab);
+  }, [activeTab]);
 
   const fetchFees = async () => {
     setLoading(true);

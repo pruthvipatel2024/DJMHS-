@@ -20,24 +20,39 @@ import { useTranslation } from 'react-i18next';
 import { getFullPhotoUrl } from '../../utils/photo.utils';
 import { formatDate } from '../../utils/date.utils';
 
+import { useAuth } from '../auth/AuthContext';
+import StorageService from '../../utils/storage.utils';
+
 const AdminDashboard: React.FC = () => {
   const { t } = useTranslation();
-  const [data, setData] = useState<AdminDashboardData | null>(null);
-  const [loading, setLoading] = useState<boolean>(true);
+  const { user } = useAuth();
+  const cachedDashboard = StorageService.get('sdjm_admin_dashboard_cache', null);
+  const [data, setData] = useState<AdminDashboardData | null>(cachedDashboard);
+  const [loading, setLoading] = useState<boolean>(!cachedDashboard);
+  const [imageError, setImageError] = useState<boolean>(false);
+
+  const staff = user?.staffProfile;
+  const adminPhoto = getFullPhotoUrl(staff?.photoUrl);
+  const adminName = staff ? `${staff.firstName} ${staff.lastName}`.trim() : (user?.identifier || 'Administrator');
+  const adminEmpId = staff?.empId || 'DJMHS-ADMIN';
+  const adminDesig = staff?.designation?.replace('_', ' ') || 'Institutional Administrator';
 
   useEffect(() => {
     const fetchDashboard = async () => {
       try {
         const dashboardData = await DashboardService.getAdminMetrics();
         setData(dashboardData);
+        StorageService.set('sdjm_admin_dashboard_cache', dashboardData);
       } catch (err) {
-        setData({
-          metrics: { totalStudents: 0, totalStaff: 0, totalDivisions: 0, attendancePercentage: 0, totalFeeCollected: 0, totalPendingDues: 0 },
-          monthlyRevenueTrend: [],
-          departmentChart: [],
-          recentActivity: [],
-          activeAnnouncements: []
-        });
+        if (!data) {
+          setData({
+            metrics: { totalStudents: 0, totalStaff: 0, totalDivisions: 0, attendancePercentage: 0, totalFeeCollected: 0, totalPendingDues: 0 },
+            monthlyRevenueTrend: [],
+            departmentChart: [],
+            recentActivity: [],
+            activeAnnouncements: []
+          });
+        }
       } finally {
         setLoading(false);
       }
@@ -45,40 +60,66 @@ const AdminDashboard: React.FC = () => {
     fetchDashboard();
   }, []);
 
-  if (loading) return <LoadingSkeleton rows={4} type="card" />;
+  if (loading && !data) return <LoadingSkeleton rows={4} type="card" />;
 
   const { metrics, monthlyRevenueTrend, departmentChart, recentActivity, recentAttendanceLogs, activeAnnouncements } = data || {};
 
   return (
     <div className="space-y-8 animate-in fade-in duration-300">
       
-      {/* Executive Welcome Banner */}
-      <div className="bg-gradient-to-r from-primary-800 via-primary-700 to-primary-900 rounded-2xl p-8 text-white shadow-xl relative overflow-hidden flex flex-col md:flex-row items-start md:items-center justify-between gap-6 border border-primary-600/50">
+      {/* Executive Welcome Banner with Admin Photo & Profile Details */}
+      <div className="bg-gradient-to-r from-primary-900 via-primary-800 to-slate-900 rounded-3xl p-6 sm:p-8 text-white shadow-xl relative overflow-hidden flex flex-col md:flex-row items-start md:items-center justify-between gap-6 border border-primary-700/50">
         <div className="absolute top-0 right-0 transform translate-x-12 -translate-y-12 w-64 h-64 bg-accent-500/10 rounded-full blur-2xl pointer-events-none"></div>
-        <div className="space-y-2 max-w-2xl relative z-10">
-          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-primary-600 text-accent-300 text-[11px] font-extrabold tracking-wider uppercase shadow-inner">
-            <BookOpen className="w-3.5 h-3.5" />
-            {t('exec_console_tag')}
+        
+        <div className="flex flex-col sm:flex-row items-start sm:items-center gap-5 relative z-10">
+          <div className="relative flex-shrink-0">
+            {adminPhoto && !imageError ? (
+              <img
+                src={adminPhoto}
+                alt={adminName}
+                onError={() => setImageError(true)}
+                className="w-20 h-20 sm:w-24 sm:h-24 rounded-2xl object-cover border-2 border-accent-400 shadow-xl bg-primary-950"
+              />
+            ) : (
+              <div className="w-20 h-20 sm:w-24 sm:h-24 rounded-2xl bg-gradient-to-tr from-accent-500 to-accent-600 text-slate-950 font-black text-3xl flex items-center justify-center border-2 border-accent-400 shadow-xl">
+                {staff?.firstName?.[0] || 'A'}
+              </div>
+            )}
+            <span className="absolute -bottom-1 -right-1 px-2 py-0.5 rounded-full bg-emerald-500 text-white font-black text-[9px] uppercase tracking-wider border-2 border-primary-900 shadow-xs">
+              Online
+            </span>
           </div>
-          <h1 className="text-2xl md:text-3xl font-black text-white tracking-tight">
-            {t('exec_console_title')}
-          </h1>
-          <p className="text-primary-200 text-xs md:text-sm leading-relaxed">
-            {t('exec_console_desc')}
-          </p>
+
+          <div className="space-y-1.5">
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="px-2.5 py-0.5 rounded-full bg-accent-400 text-slate-950 font-black text-[10px] uppercase tracking-wider">
+                {adminEmpId}
+              </span>
+              <span className="px-2.5 py-0.5 rounded-full bg-primary-700 text-primary-100 font-bold text-[10px] border border-primary-600">
+                {adminDesig}
+              </span>
+            </div>
+
+            <h1 className="text-2xl md:text-3xl font-black text-white tracking-tight">
+              Welcome, {adminName}
+            </h1>
+            <p className="text-primary-200 text-xs md:text-sm leading-relaxed max-w-xl">
+              Shree Dhaneshkumar Jasvantlal Maheta High School &bull; Executive Academic & Administrative Control Console
+            </p>
+          </div>
         </div>
         
         <div className="flex flex-col sm:flex-row items-stretch gap-3 relative z-10 w-full md:w-auto">
           <Link
             to="/admin/attendance"
-            className="px-5 py-3 rounded-xl bg-accent-500 hover:bg-accent-600 text-slate-900 font-bold text-xs transition shadow-lg shadow-accent-500/20 flex items-center justify-center gap-2"
+            className="px-5 py-3 rounded-xl bg-accent-500 hover:bg-accent-600 text-slate-950 font-bold text-xs transition shadow-lg shadow-accent-500/20 flex items-center justify-center gap-2 cursor-pointer"
           >
             <CalendarCheck className="w-4 h-4" />
             {t('review_attendance')}
           </Link>
           <Link
             to="/admin/fees"
-            className="px-5 py-3 rounded-xl bg-primary-600/80 hover:bg-primary-600 text-white font-semibold text-xs transition border border-primary-400 flex items-center justify-center gap-2"
+            className="px-5 py-3 rounded-xl bg-primary-700 hover:bg-primary-600 text-white font-semibold text-xs transition border border-primary-500 flex items-center justify-center gap-2 cursor-pointer"
           >
             <Coins className="w-4 h-4 text-accent-400" />
             {t('fee_accounts')}

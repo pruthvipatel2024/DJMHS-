@@ -2,25 +2,41 @@ const prisma = require('../config/db');
 const { sendSMS } = require('../services/communication.service');
 
 /**
- * Get attendance sheet for a specified division and date
+ * Get attendance sheet for a specified division and date with cumulative student metrics
  */
 const getAttendanceByDivision = async (req, res, next) => {
   try {
-    const { divisionId, date } = req.query;
+    const { divisionId, standardId, date } = req.query;
+
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
 
     const queryDate = date ? new Date(date) : new Date();
     queryDate.setHours(0, 0, 0, 0);
+
+    const todayStr = today.toISOString().split('T')[0];
+    const queryDateStr = queryDate.toISOString().split('T')[0];
+
+    const isFuture = queryDate > today;
+    const isHistorical = queryDate < today;
 
     let division = null;
     if (divisionId) {
       try {
         division = await prisma.division.findFirst({
-          where: { OR: [{ id: divisionId }, { name: { contains: divisionId, mode: 'insensitive' } }] },
+          where: { OR: [{ id: divisionId }, { name: divisionId }] },
           include: { standard: true },
         });
       } catch (e) {
-        /* ignore non-UUID string query */
+        /* ignore */
       }
+    }
+
+    if (!division && standardId) {
+      division = await prisma.division.findFirst({
+        where: { standardId },
+        include: { standard: true },
+      });
     }
 
     if (!division) {
@@ -29,60 +45,104 @@ const getAttendanceByDivision = async (req, res, next) => {
 
     const targetDivId = division ? division.id : divisionId;
 
-    // Find active students
+    // Find active students strictly belonging to this division
     let students = [];
     if (targetDivId) {
-      try {
-        students = await prisma.student.findMany({
-          where: { divisionId: targetDivId, status: 'ACTIVE' },
-          orderBy: { rollNumber: 'asc' },
-        });
-      } catch (e) {
-        students = [];
-      }
-    }
-
-    // Fallback: If no students found in exact division, fetch all active students so register is never empty
-    if (students.length === 0) {
       students = await prisma.student.findMany({
-        where: { status: 'ACTIVE' },
-        orderBy: { rollNumber: 'asc' },
+        where: { divisionId: targetDivId, status: 'ACTIVE', deletedAt: null },
+        orderBy: [{ rollNumber: 'asc' }, { firstName: 'asc' }],
       });
     }
 
-    // Query existing attendance records for queryDate
-    const existingRecords = await prisma.studentAttendance.findMany({
-      where: {
-        date: queryDate,
-      },
-    });
+    // Query existing attendance records for the target date
+    const existingRecords = targetDivId
+      ? await prisma.studentAttendance.findMany({
+          where: {
+            divisionId: targetDivId,
+            date: queryDate,
+          },
+        })
+      : [];
+
+    // Query all historical attendance records for the students in this division to compute cumulative percentages
+    const studentIds = students.map((s) => s.id);
+    const allHistoricalRecords = studentIds.length > 0
+      ? await prisma.studentAttendance.findMany({
+          where: {
+            studentId: { in: studentIds },
+          },
+          select: {
+            studentId: true,
+            status: true,
+          },
+        })
+      : [];
 
     const studentAttendance = students.map((std) => {
       const rec = existingRecords.find((r) => r.studentId === std.id);
+      
+      const stdHistory = allHistoricalRecords.filter((r) => r.studentId === std.id);
+      const totalMarkedDays = stdHistory.length;
+      const presentDays = stdHistory.filter((r) => r.status === 'PRESENT' || r.status === 'HALF_DAY').length;
+      const attendancePercentage = totalMarkedDays > 0
+        ? Number(((presentDays / totalMarkedDays) * 100).toFixed(1))
+        : 100.0;
+      const isLowAttendance = totalMarkedDays > 0 && attendancePercentage < 75.0;
+
       return {
         studentId: std.id,
         grNumber: std.grNumber,
-        rollNumber: std.rollNumber,
+        rollNumber: std.rollNumber || '',
         firstName: std.firstName,
         lastName: std.lastName,
-        status: rec ? rec.status : 'PRESENT', // Default to Present
+        photoUrl: std.photoUrl || null,
+        gender: std.gender || 'Male',
+        status: rec ? rec.status : 'PRESENT', // Default to Present for marking
         remarks: rec?.remarks || '',
+        presentDays,
+        totalMarkedDays,
+        attendancePercentage,
+        isLowAttendance,
       };
     });
 
     const userRole = req.user?.role?.name || (typeof req.user?.role === 'string' ? req.user.role : 'TEACHER');
     const isAdmin = userRole === 'ADMIN';
     const isMarked = existingRecords.length > 0;
-    const isLocked = isMarked && !isAdmin;
+    
+    // Check if active user is designated Class Teacher for this division
+    let isClassTeacher = false;
+    if (req.user?.staffProfile?.id && targetDivId) {
+      const mapping = await prisma.classTeacherMapping.findFirst({
+        where: {
+          staffId: req.user.staffProfile.id,
+          divisionId: targetDivId,
+        },
+      });
+      if (mapping) isClassTeacher = true;
+    } else if (isAdmin) {
+      isClassTeacher = true;
+    }
+
+    // Lock conditions:
+    // 1. Future dates are always locked for marking
+    // 2. Historical past dates are locked for non-admins (Teachers can only view history)
+    // 3. Already marked registers for today are locked for non-admins
+    // 4. Non-class-teachers are locked from marking attendance
+    const isLocked = isFuture || (isHistorical && !isAdmin) || (isMarked && !isAdmin) || (!isAdmin && !isClassTeacher);
 
     res.status(200).json({
       success: true,
       data: {
         division,
-        date: queryDate.toISOString().split('T')[0],
+        date: queryDateStr,
+        todayDate: todayStr,
+        isFuture,
+        isHistorical,
         isMarked,
         isLocked,
         isAdmin,
+        isClassTeacher,
         students: studentAttendance,
       },
     });
@@ -93,7 +153,7 @@ const getAttendanceByDivision = async (req, res, next) => {
 
 /**
  * Submit or update attendance for a division on a specific date
- * Automatically triggers guardian SMS alerts for absent students per PRD Chapter 5!
+ * Strictly enforces date validation (no future dates) and locks
  */
 const markAttendance = async (req, res, next) => {
   try {
@@ -106,13 +166,56 @@ const markAttendance = async (req, res, next) => {
       });
     }
 
+    const today = new Date();
+    today.setHours(23, 59, 59, 999);
+
+    const startOfToday = new Date();
+    startOfToday.setHours(0, 0, 0, 0);
+
     const targetDate = date ? new Date(date) : new Date();
     targetDate.setHours(0, 0, 0, 0);
 
     const userRole = req.user?.role?.name || (typeof req.user?.role === 'string' ? req.user.role : 'TEACHER');
     const isAdmin = userRole === 'ADMIN';
 
-    // Enforce Lock Rule: Once attendance is submitted, non-admin users cannot change it.
+    // Verify Class Teacher Authorization for non-admin staff
+    if (!isAdmin) {
+      let isAuthorizedClassTeacher = false;
+      const staffId = req.user?.staffProfile?.id;
+      if (staffId && divisionId) {
+        const mapping = await prisma.classTeacherMapping.findFirst({
+          where: { staffId, divisionId },
+        });
+        if (mapping) isAuthorizedClassTeacher = true;
+      }
+      if (!isAuthorizedClassTeacher) {
+        return res.status(403).json({
+          success: false,
+          error: 'Class Teacher Authorization Required',
+          message: 'Only designated Class Teachers for this division or Institutional Administrators are authorized to submit student attendance registers.',
+        });
+      }
+    }
+
+    // 1. Strictly block ANY future date attendance submission
+    if (targetDate > today) {
+      return res.status(400).json({
+        success: false,
+        error: 'Invalid Date',
+        message: 'Attendance cannot be marked or modified for future dates.',
+      });
+    }
+
+    // 2. Restrict previous / past dates for non-admin teachers
+    if (targetDate < startOfToday && !isAdmin) {
+      return res.status(403).json({
+        success: false,
+        error: 'Date Restricted',
+        message: 'Teachers are only permitted to submit attendance for the current day. Historical past registers are read-only.',
+      });
+    }
+
+    // 3. Enforce Lock Rule: Once attendance is submitted, non-admin users cannot change it
     const existingCount = await prisma.studentAttendance.count({
       where: {
         ...(divisionId ? { divisionId } : {}),
@@ -124,7 +227,7 @@ const markAttendance = async (req, res, next) => {
       return res.status(403).json({
         success: false,
         error: 'Register Locked',
-        message: 'Attendance for today has already been submitted for this class. Only Institutional Administrators can modify or update submitted attendance registers.',
+        message: 'Attendance for today has already been submitted for this class. Only Institutional Administrators can modify submitted registers.',
       });
     }
 
@@ -180,7 +283,7 @@ const markAttendance = async (req, res, next) => {
             await sendSMS(
               primaryGuardian.phone,
               `DJMHS High School Attendance Alert: Your ward ${currentStudent.firstName} ${currentStudent.lastName} (GR: ${currentStudent.grNumber}) was marked ABSENT today (${targetDate.toLocaleDateString()}). Please contact class teacher for details.`
-            );
+            ).catch(() => {});
           }
         }
       }

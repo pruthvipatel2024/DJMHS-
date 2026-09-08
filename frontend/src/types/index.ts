@@ -28,12 +28,33 @@ export interface StaffProfile {
   empId: string;
   firstName: string;
   lastName: string;
+  fullName?: string;
   gender: string;
   designation: string;
-  department?: { id: string; name: string };
+  employmentType?: string;
+  joinDate?: string;
+  dob?: string;
+  address?: string;
+  departmentId?: string;
+  department?: { id: string; name: string; description?: string };
   phone: string;
   email: string;
   photoUrl?: string;
+  classTeaching?: Array<{
+    id: string;
+    divisionId: string;
+    academicYearId: string;
+    isCoTeacher: boolean;
+    division: {
+      id: string;
+      name: string;
+      roomNumber?: string;
+      standard: {
+        id: string;
+        name: string;
+      };
+    };
+  }>;
 }
 
 export interface StudentProfile {
