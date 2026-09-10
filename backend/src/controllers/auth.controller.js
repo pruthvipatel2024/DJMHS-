@@ -353,30 +353,80 @@ const revokeSession = async (req, res, next) => {
 
 const firstTimeChangePassword = async (req, res, next) => {
   try {
-    const { newPassword } = req.body;
+    const { newPassword, currentPassword } = req.body;
+
+    // If this is a subsequent password change and currentPassword was supplied, verify it
+    if (!req.user.isFirstLogin && currentPassword) {
+      const isMatch = await comparePassword(currentPassword, req.user.passwordHash);
+      if (!isMatch) {
+        return res.status(400).json({ success: false, error: 'Incorrect Current Password', message: 'The current password entered is incorrect.' });
+      }
+    }
+
     const complexity = checkPasswordComplexity(newPassword);
     if (!complexity.valid) {
       return res.status(400).json({ success: false, error: 'Password Policy Violation', message: complexity.message });
     }
 
     const hashedPassword = await hashPassword(newPassword);
-    await prisma.user.update({
+    const updatedUser = await prisma.user.update({
       where: { id: req.user.id },
-      data: { passwordHash: hashedPassword, isFirstLogin: false },
+      data: {
+        passwordHash: hashedPassword,
+        isFirstLogin: false,
+        failedLoginAttempts: 0,
+        isLocked: false,
+        lockUntil: null,
+      },
+      include: {
+        role: true,
+        staffProfile: {
+          include: {
+            department: true,
+            classTeaching: {
+              include: {
+                division: {
+                  include: { standard: true }
+                }
+              }
+            }
+          }
+        },
+        studentProfile: { include: { division: { include: { standard: true } } } },
+        parentProfile: {
+          include: {
+            students: {
+              include: {
+                student: { include: { division: { include: { standard: true } } } },
+              },
+            },
+          },
+        },
+      },
     });
+
+    // Invalidate stale in-memory session cache so upcoming requests immediately reflect isFirstLogin: false
+    const { invalidateSessionCache } = require('../middleware/auth.middleware');
+    invalidateSessionCache(req.sessionToken);
 
     await prisma.auditLog.create({
       data: {
         userId: req.user.id,
         actorName: req.user.identifier,
-        action: 'FIRST_LOGIN_PASSWORD_CHANGED',
+        action: req.user.isFirstLogin ? 'FIRST_LOGIN_PASSWORD_CHANGED' : 'PASSWORD_CHANGED',
         entity: 'USER',
         entityId: req.user.id,
         ipAddress: getClientIp(req),
       },
     });
 
-    res.status(200).json({ success: true, message: 'Your personal security password has been successfully established!' });
+    const { passwordHash, resetOtp, resetOtpExpiry, ...safeUser } = updatedUser;
+
+    res.status(200).json({
+      success: true,
+      message: 'Your personal security password has been successfully established!',
+      user: safeUser,
+    });
   } catch (err) {
     next(err);
   }

@@ -109,6 +109,14 @@ export const AttendanceService = {
     }
     return list;
   },
+
+  exportExcel: async (params?: { divisionId?: string; month?: number; year?: number }): Promise<Blob> => {
+    const res = await api.get('/attendance/export', {
+      params,
+      responseType: 'blob',
+    });
+    return res.data;
+  },
 };
 
 export default AttendanceService;

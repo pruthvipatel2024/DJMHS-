@@ -1,4 +1,5 @@
 const prisma = require('../config/db');
+const { exportMultiSheetExcel } = require('../services/excel.service');
 
 // Default initial GSEB subjects to seed if standard subjects are empty
 const defaultGSEBSubjects = {
@@ -521,6 +522,626 @@ const deleteSubjectAllocation = async (req, res, next) => {
   }
 };
 
+/**
+ * Download Complete Institutional Backup as JSON Archive
+ */
+const downloadJsonBackup = async (req, res, next) => {
+  try {
+    const [
+      settings,
+      academicYears,
+      departments,
+      standards,
+      subjects,
+      staff,
+      students,
+      parents,
+      staffSubjectMappings,
+      timetables,
+      feeStructures,
+      feeInstallments,
+      studentAttendance,
+      exams,
+      admissionInquiries,
+      complaints,
+      announcements,
+      auditLogs,
+    ] = await Promise.all([
+      prisma.setting.findMany(),
+      prisma.academicYear.findMany({ where: { deletedAt: null } }),
+      prisma.department.findMany({ where: { deletedAt: null } }),
+      prisma.standard.findMany({ where: { deletedAt: null }, include: { divisions: true } }),
+      prisma.subject.findMany({ where: { deletedAt: null }, include: { standard: true } }),
+      prisma.staff.findMany({
+        where: { deletedAt: null },
+        include: {
+          department: true,
+          user: {
+            select: {
+              id: true,
+              identifier: true,
+              email: true,
+              phone: true,
+              isActive: true,
+              isLocked: true,
+              preferredLanguage: true,
+              role: { select: { id: true, name: true } },
+            },
+          },
+        },
+      }),
+      prisma.student.findMany({
+        where: { deletedAt: null },
+        include: {
+          division: { include: { standard: true } },
+          parents: { include: { parent: true } },
+        },
+      }),
+      prisma.parent.findMany({ where: { deletedAt: null } }),
+      prisma.staffSubjectMapping.findMany({
+        include: {
+          staff: true,
+          subject: true,
+          division: { include: { standard: true } },
+        },
+      }),
+      prisma.timetable.findMany({
+        include: {
+          academicYear: true,
+          division: { include: { standard: true } },
+          subject: true,
+          staff: true,
+        },
+      }),
+      prisma.feeStructure.findMany({ include: { standard: true, academicYear: true } }),
+      prisma.feeInstallment.findMany({
+        include: {
+          student: { include: { division: { include: { standard: true } } } },
+          payments: true,
+        },
+      }),
+      prisma.studentAttendance.findMany({
+        take: 5000,
+        orderBy: { date: 'desc' },
+        include: { student: true },
+      }),
+      prisma.exam.findMany({
+        where: { deletedAt: null },
+        include: {
+          standard: true,
+          academicYear: true,
+          schedules: { include: { subject: true } },
+        },
+      }),
+      prisma.mark.findMany({
+        include: {
+          student: true,
+          examSchedule: { include: { exam: true, subject: true } },
+        },
+      }),
+      prisma.admissionInquiry.findMany({ where: { deletedAt: null } }),
+      prisma.complaint.findMany({ include: { assignedToStaff: true } }),
+      prisma.announcement.findMany({ orderBy: { createdAt: 'desc' } }),
+      prisma.auditLog.findMany({ take: 1000, orderBy: { createdAt: 'desc' } }),
+    ]);
+
+    const backupPayload = {
+      metadata: {
+        institution: "D.J. Malaviya Hindi High School (DJMHS)",
+        system: "DJMHS Institutional ERP System",
+        exportTimestamp: new Date().toISOString(),
+        exportedBy: req.user ? `${req.user.identifier || req.user.email} (${req.user.role?.name})` : 'ADMIN',
+        schemaVersion: "1.0.0",
+        recordSummary: {
+          settings: settings.length,
+          academicYears: academicYears.length,
+          departments: departments.length,
+          standards: standards.length,
+          divisions: standards.reduce((acc, s) => acc + (s.divisions?.length || 0), 0),
+          subjects: subjects.length,
+          staff: staff.length,
+          students: students.length,
+          parents: parents.length,
+          subjectAllocations: staffSubjectMappings.length,
+          timetables: timetables.length,
+          feeInstallments: feeInstallments.length,
+          attendanceRecords: studentAttendance.length,
+          exams: exams.length,
+          admissionInquiries: admissionInquiries.length,
+          complaints: complaints.length,
+          announcements: announcements.length,
+          auditLogs: auditLogs.length,
+        },
+      },
+      data: {
+        settings,
+        academicYears,
+        departments,
+        standards,
+        subjects,
+        staff,
+        students,
+        parents,
+        staffSubjectMappings,
+        timetables,
+        feeStructures,
+        feeInstallments,
+        studentAttendance,
+        exams,
+        admissionInquiries,
+        complaints,
+        announcements,
+        auditLogs,
+      },
+    };
+
+    const jsonString = JSON.stringify(backupPayload, null, 2);
+
+    res.setHeader('Content-Type', 'application/json; charset=utf-8');
+    res.setHeader('Content-Disposition', `attachment; filename="DJMHS_Complete_Backup_${Date.now()}.json"`);
+    res.send(jsonString);
+  } catch (err) {
+    next(err);
+  }
+};
+
+/**
+ * Download Complete Institutional Backup as Multi-Sheet Excel Workbook
+ */
+const downloadExcelBackup = async (req, res, next) => {
+  try {
+    const [
+      settings,
+      standards,
+      departments,
+      subjects,
+      staff,
+      students,
+      parents,
+      staffSubjectMappings,
+      timetables,
+      feeInstallments,
+      studentAttendance,
+      exams,
+      marks,
+      admissionInquiries,
+      complaints,
+      announcements,
+    ] = await Promise.all([
+      prisma.setting.findMany(),
+      prisma.standard.findMany({ where: { deletedAt: null }, include: { divisions: true } }),
+      prisma.department.findMany({ where: { deletedAt: null } }),
+      prisma.subject.findMany({ where: { deletedAt: null }, include: { standard: true } }),
+      prisma.staff.findMany({
+        where: { deletedAt: null },
+        include: { department: true, user: true },
+        orderBy: [{ department: { name: 'asc' } }, { firstName: 'asc' }],
+      }),
+      prisma.student.findMany({
+        where: { deletedAt: null },
+        include: {
+          division: { include: { standard: true } },
+          parents: { include: { parent: true } },
+        },
+        orderBy: [{ division: { name: 'asc' } }, { rollNumber: 'asc' }],
+      }),
+      prisma.parent.findMany({ where: { deletedAt: null } }),
+      prisma.staffSubjectMapping.findMany({
+        include: {
+          staff: true,
+          subject: true,
+          division: { include: { standard: true } },
+        },
+      }),
+      prisma.timetable.findMany({
+        include: {
+          division: { include: { standard: true } },
+          subject: true,
+          staff: true,
+        },
+      }),
+      prisma.feeInstallment.findMany({
+        include: {
+          student: { include: { division: { include: { standard: true } }, parents: { include: { parent: true } } } },
+          payments: true,
+        },
+        orderBy: { dueDate: 'asc' },
+      }),
+      prisma.studentAttendance.findMany({
+        take: 2000,
+        orderBy: { date: 'desc' },
+        include: { student: { include: { division: { include: { standard: true } } } } },
+      }),
+      prisma.exam.findMany({
+        where: { deletedAt: null },
+        include: {
+          standard: true,
+          schedules: { include: { subject: true } },
+        },
+      }),
+      prisma.mark.findMany({
+        include: {
+          student: { include: { division: { include: { standard: true } } } },
+          examSchedule: { include: { exam: true, subject: true } },
+        },
+      }),
+      prisma.admissionInquiry.findMany({ where: { deletedAt: null }, orderBy: { createdAt: 'desc' } }),
+      prisma.complaint.findMany({ include: { assignedToStaff: true }, orderBy: { createdAt: 'desc' } }),
+      prisma.announcement.findMany({ orderBy: { createdAt: 'desc' } }),
+    ]);
+
+    const sheets = [];
+
+    // Sheet 1: Settings
+    sheets.push({
+      sheetName: 'System Settings',
+      tabColor: 'FF1E3A8A',
+      columns: [
+        { header: 'Setting Parameter', key: 'key' },
+        { header: 'Configured Value', key: 'value' },
+        { header: 'Description / Purpose', key: 'description' },
+      ],
+      rows: settings.map((s) => ({
+        key: s.key,
+        value: s.value,
+        description: s.description || 'Institutional Configuration Parameter',
+      })),
+    });
+
+    // Sheet 2: Standards & Divisions
+    const standardDivisionRows = [];
+    standards.forEach((std) => {
+      if (std.divisions && std.divisions.length > 0) {
+        std.divisions.forEach((div) => {
+          standardDivisionRows.push({
+            standard: std.name,
+            level: std.level,
+            division: div.name,
+            room: div.roomNumber || 'N/A',
+            capacity: div.capacity || 40,
+          });
+        });
+      } else {
+        standardDivisionRows.push({
+          standard: std.name,
+          level: std.level,
+          division: 'Default',
+          room: 'N/A',
+          capacity: std.capacity || 60,
+        });
+      }
+    });
+
+    sheets.push({
+      sheetName: 'Standards & Divisions',
+      tabColor: 'FF2563EB',
+      columns: [
+        { header: 'Standard / Tier', key: 'standard' },
+        { header: 'Grade Level', key: 'level' },
+        { header: 'Division', key: 'division' },
+        { header: 'Classroom', key: 'room' },
+        { header: 'Student Capacity', key: 'capacity' },
+      ],
+      rows: standardDivisionRows,
+    });
+
+    // Sheet 3: Departments
+    sheets.push({
+      sheetName: 'Departments',
+      tabColor: 'FF4F46E5',
+      columns: [
+        { header: 'Department Name', key: 'name' },
+        { header: 'Department Description', key: 'description' },
+      ],
+      rows: departments.map((d) => ({
+        name: d.name,
+        description: d.description || 'N/A',
+      })),
+    });
+
+    // Sheet 4: Subjects
+    sheets.push({
+      sheetName: 'Curriculum Subjects',
+      tabColor: 'FF7C3AED',
+      columns: [
+        { header: 'Standard', key: 'standard' },
+        { header: 'Subject Name', key: 'name' },
+        { header: 'Subject Code', key: 'code' },
+        { header: 'Course Type', key: 'type' },
+      ],
+      rows: subjects.map((sub) => ({
+        standard: sub.standard?.name || 'General',
+        name: sub.name,
+        code: sub.code,
+        type: sub.isOptional ? 'Optional Elective' : 'Core Compulsory',
+      })),
+    });
+
+    // Sheet 5: Faculty & Staff
+    sheets.push({
+      sheetName: 'Faculty & Staff',
+      tabColor: 'FF0D9488',
+      columns: [
+        { header: 'Employee ID', key: 'empId' },
+        { header: 'Staff Name', key: 'name' },
+        { header: 'Designation', key: 'designation' },
+        { header: 'Department', key: 'department' },
+        { header: 'Phone Number', key: 'phone' },
+        { header: 'Email Address', key: 'email' },
+        { header: 'Gender', key: 'gender' },
+        { header: 'Date of Birth', key: 'dob' },
+        { header: 'Joining Date', key: 'joinDate' },
+        { header: 'Employment Type', key: 'employmentType' },
+        { header: 'Address', key: 'address' },
+        { header: 'Account Status', key: 'status' },
+      ],
+      rows: staff.map((s) => ({
+        empId: s.empId || 'N/A',
+        name: `${s.firstName || ''} ${s.lastName || ''}`.trim(),
+        designation: s.designation ? s.designation.replace(/_/g, ' ') : 'TEACHER',
+        department: s.department?.name || 'General',
+        phone: s.phone || 'N/A',
+        email: s.email || s.user?.email || 'N/A',
+        gender: s.gender || 'N/A',
+        dob: s.dob ? new Date(s.dob).toISOString().split('T')[0] : 'N/A',
+        joinDate: s.joinDate ? new Date(s.joinDate).toISOString().split('T')[0] : 'N/A',
+        employmentType: s.employmentType || 'PERMANENT',
+        address: s.address || 'N/A',
+        status: s.user?.isActive !== false ? 'ACTIVE' : 'INACTIVE',
+      })),
+    });
+
+    // Sheet 6: Students Roster
+    sheets.push({
+      sheetName: 'Students General Register',
+      tabColor: 'FF059669',
+      columns: [
+        { header: 'GR Number', key: 'grNumber' },
+        { header: 'Roll No', key: 'rollNumber' },
+        { header: 'Student Name', key: 'name' },
+        { header: 'Gender', key: 'gender' },
+        { header: 'Date of Birth', key: 'dob' },
+        { header: 'Standard', key: 'standard' },
+        { header: 'Division', key: 'division' },
+        { header: 'Blood Group', key: 'bloodGroup' },
+        { header: 'Emergency Contact', key: 'emergencyContact' },
+        { header: 'Guardian Name', key: 'guardian' },
+        { header: 'Guardian Phone', key: 'phone' },
+        { header: 'Guardian Email', key: 'email' },
+        { header: 'Status', key: 'status' },
+      ],
+      rows: students.map((s) => {
+        const primaryParent = s.parents?.find((p) => p.isPrimary)?.parent || s.parents?.[0]?.parent;
+        return {
+          grNumber: s.grNumber || 'N/A',
+          rollNumber: s.rollNumber || 'N/A',
+          name: `${s.firstName || ''} ${s.lastName || ''}`.trim(),
+          gender: s.gender || 'N/A',
+          dob: s.dob ? new Date(s.dob).toISOString().split('T')[0] : 'N/A',
+          standard: s.division?.standard?.name || 'N/A',
+          division: s.division?.name || 'A',
+          bloodGroup: s.bloodGroup || 'N/A',
+          emergencyContact: s.emergencyContact || 'N/A',
+          guardian: primaryParent ? `${primaryParent.fatherName || primaryParent.guardianName || 'Guardian'}` : 'N/A',
+          phone: primaryParent?.phone || 'N/A',
+          email: primaryParent?.email || 'N/A',
+          status: s.status || 'ACTIVE',
+        };
+      }),
+    });
+
+    // Sheet 7: Parents Directory
+    sheets.push({
+      sheetName: 'Parents Directory',
+      tabColor: 'FF16A34A',
+      columns: [
+        { header: 'Father Name', key: 'fatherName' },
+        { header: 'Mother Name', key: 'motherName' },
+        { header: 'Guardian Name', key: 'guardianName' },
+        { header: 'Primary Mobile', key: 'phone' },
+        { header: 'Email Address', key: 'email' },
+        { header: 'Occupation', key: 'occupation' },
+        { header: 'Residential Address', key: 'address' },
+      ],
+      rows: parents.map((p) => ({
+        fatherName: p.fatherName || 'N/A',
+        motherName: p.motherName || 'N/A',
+        guardianName: p.guardianName || 'N/A',
+        phone: p.phone || 'N/A',
+        email: p.email || 'N/A',
+        occupation: p.occupation || 'N/A',
+        address: p.address || 'N/A',
+      })),
+    });
+
+    // Sheet 8: Teacher Allocations
+    sheets.push({
+      sheetName: 'Teacher Subject Allocations',
+      tabColor: 'FFCA8A04',
+      columns: [
+        { header: 'Standard', key: 'standard' },
+        { header: 'Division', key: 'division' },
+        { header: 'Curriculum Subject', key: 'subject' },
+        { header: 'Subject Code', key: 'code' },
+        { header: 'Assigned Faculty', key: 'teacher' },
+        { header: 'Employee ID', key: 'empId' },
+      ],
+      rows: staffSubjectMappings.map((m) => ({
+        standard: m.division?.standard?.name || 'N/A',
+        division: m.division?.name || 'A',
+        subject: m.subject?.name || 'N/A',
+        code: m.subject?.code || 'N/A',
+        teacher: m.staff ? `${m.staff.firstName} ${m.staff.lastName}` : 'Unassigned',
+        empId: m.staff?.empId || 'N/A',
+      })),
+    });
+
+    // Sheet 9: Master Timetable
+    sheets.push({
+      sheetName: 'Master Timetable',
+      tabColor: 'FFD97706',
+      columns: [
+        { header: 'Standard', key: 'standard' },
+        { header: 'Division', key: 'division' },
+        { header: 'Day of Week', key: 'day' },
+        { header: 'Period Slot', key: 'period' },
+        { header: 'Subject', key: 'subject' },
+        { header: 'Assigned Teacher', key: 'teacher' },
+        { header: 'Room', key: 'room' },
+      ],
+      rows: timetables.map((t) => ({
+        standard: t.division?.standard?.name || 'N/A',
+        division: t.division?.name || 'A',
+        day: t.dayOfWeek || 'MONDAY',
+        period: `Period ${t.periodIndex || 1}`,
+        subject: t.subject?.name || 'N/A',
+        teacher: t.staff ? `${t.staff.firstName} ${t.staff.lastName}` : 'N/A',
+        room: t.roomNumber || t.division?.roomNumber || 'N/A',
+      })),
+    });
+
+    // Sheet 10: Fee Ledger
+    sheets.push({
+      sheetName: 'Fee Collection Ledger',
+      tabColor: 'FFEA580C',
+      columns: [
+        { header: 'Installment Title', key: 'title' },
+        { header: 'Student Name', key: 'studentName' },
+        { header: 'GR Number', key: 'grNumber' },
+        { header: 'Standard & Div', key: 'cohort' },
+        { header: 'Due Date', key: 'dueDate' },
+        { header: 'Amount Due (INR)', key: 'amount' },
+        { header: 'Amount Paid (INR)', key: 'paidAmount' },
+        { header: 'Balance Due (INR)', key: 'balance' },
+        { header: 'Payment Status', key: 'status' },
+      ],
+      rows: feeInstallments.map((inst) => {
+        const totalPaid = inst.payments?.reduce((acc, p) => acc + (p.amount || 0), 0) || (inst.status === 'PAID' ? inst.amount : 0);
+        const balance = Math.max(0, inst.amount - totalPaid);
+        return {
+          title: inst.title || 'Tuition Fee Installment',
+          studentName: inst.student ? `${inst.student.firstName} ${inst.student.lastName}` : 'N/A',
+          grNumber: inst.student?.grNumber || 'N/A',
+          cohort: inst.student?.division ? `${inst.student.division.standard?.name || ''} - Div ${inst.student.division.name}` : 'N/A',
+          dueDate: inst.dueDate ? new Date(inst.dueDate).toISOString().split('T')[0] : 'N/A',
+          amount: Number(inst.amount || 0).toLocaleString('en-IN'),
+          paidAmount: Number(totalPaid).toLocaleString('en-IN'),
+          balance: Number(balance).toLocaleString('en-IN'),
+          status: inst.status || 'PENDING',
+        };
+      }),
+    });
+
+    // Sheet 11: Examination Marks
+    sheets.push({
+      sheetName: 'Examination Scores',
+      tabColor: 'FF9333EA',
+      columns: [
+        { header: 'Exam Title', key: 'exam' },
+        { header: 'Standard & Div', key: 'cohort' },
+        { header: 'GR Number', key: 'grNumber' },
+        { header: 'Student Name', key: 'name' },
+        { header: 'Subject', key: 'subject' },
+        { header: 'Marks Obtained', key: 'score' },
+        { header: 'Max Marks', key: 'max' },
+        { header: 'Grade', key: 'grade' },
+        { header: 'Remarks', key: 'remarks' },
+      ],
+      rows: marks.map((m) => ({
+        exam: m.examSchedule?.exam?.name || 'Assessment Term',
+        cohort: m.student?.division ? `${m.student.division.standard?.name || ''} - Div ${m.student.division.name}` : 'N/A',
+        grNumber: m.student?.grNumber || 'N/A',
+        name: m.student ? `${m.student.firstName} ${m.student.lastName}` : 'N/A',
+        subject: m.examSchedule?.subject?.name || 'N/A',
+        score: m.isAbsent ? 'ABSENT' : (m.marksObtained !== null && m.marksObtained !== undefined ? m.marksObtained : 'N/A'),
+        max: m.examSchedule?.maxMarks || 100,
+        grade: m.grade || (m.isAbsent ? 'F (Absent)' : 'N/A'),
+        remarks: m.remarks || 'None',
+      })),
+    });
+
+    // Sheet 12: Admission Inquiries
+    sheets.push({
+      sheetName: 'Admission Inquiries',
+      tabColor: 'FF0284C7',
+      columns: [
+        { header: 'Inquiry No', key: 'inquiryNo' },
+        { header: 'Prospective Pupil', key: 'studentName' },
+        { header: 'Parent / Guardian', key: 'parentName' },
+        { header: 'Phone Number', key: 'phone' },
+        { header: 'Email Address', key: 'email' },
+        { header: 'Status', key: 'status' },
+        { header: 'Submission Date', key: 'createdAt' },
+        { header: 'Notes', key: 'notes' },
+      ],
+      rows: admissionInquiries.map((inq) => ({
+        inquiryNo: inq.inquiryNo || 'N/A',
+        studentName: inq.studentName || 'N/A',
+        parentName: inq.parentName || 'N/A',
+        phone: inq.phone || 'N/A',
+        email: inq.email || 'N/A',
+        status: inq.status || 'NEW',
+        createdAt: inq.createdAt ? new Date(inq.createdAt).toISOString().split('T')[0] : 'N/A',
+        notes: inq.notes || 'None',
+      })),
+    });
+
+    // Sheet 13: Helpdesk Complaints
+    sheets.push({
+      sheetName: 'Complaints Helpdesk',
+      tabColor: 'FFE11D48',
+      columns: [
+        { header: 'Ticket Number', key: 'ticketNo' },
+        { header: 'Category', key: 'category' },
+        { header: 'Subject', key: 'subject' },
+        { header: 'Description', key: 'description' },
+        { header: 'Priority', key: 'priority' },
+        { header: 'Status', key: 'status' },
+        { header: 'Assigned Staff', key: 'assignedStaff' },
+        { header: 'Resolution Notes', key: 'resolution' },
+      ],
+      rows: complaints.map((c) => ({
+        ticketNo: c.ticketNumber || c.ticketNo || 'N/A',
+        category: c.category || 'General',
+        subject: c.title || c.subject || 'N/A',
+        description: c.description || 'N/A',
+        priority: c.priority || 'NORMAL',
+        status: c.status || 'OPEN',
+        assignedStaff: c.assignedToStaff ? `${c.assignedToStaff.firstName} ${c.assignedToStaff.lastName}` : 'Unassigned',
+        resolution: c.resolutionNotes || 'Pending',
+      })),
+    });
+
+    // Sheet 14: Announcements
+    sheets.push({
+      sheetName: 'Broadcast Notices',
+      tabColor: 'FF475569',
+      columns: [
+        { header: 'Notice Title', key: 'title' },
+        { header: 'Notice Content', key: 'content' },
+        { header: 'Target Audience', key: 'targetRole' },
+        { header: 'Priority', key: 'priority' },
+        { header: 'Published Date', key: 'publishedAt' },
+      ],
+      rows: announcements.map((a) => ({
+        title: a.titleEn || 'Untitled Notice',
+        content: a.contentEn || 'N/A',
+        targetRole: a.targetRole || 'ALL',
+        priority: a.priority || 'NORMAL',
+        publishedAt: a.publishedAt ? new Date(a.publishedAt).toISOString().split('T')[0] : 'N/A',
+      })),
+    });
+
+    const buffer = await exportMultiSheetExcel(sheets);
+
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.setHeader('Content-Disposition', `attachment; filename="DJMHS_Complete_Institutional_Backup_${Date.now()}.xlsx"`);
+    res.send(buffer);
+  } catch (err) {
+    next(err);
+  }
+};
+
 module.exports = {
   getSettings,
   getSchoolProfile,
@@ -542,4 +1163,6 @@ module.exports = {
   assignStaffSubject,
   bulkSaveClassSubjectAssignments,
   deleteSubjectAllocation,
+  downloadJsonBackup,
+  downloadExcelBackup,
 };

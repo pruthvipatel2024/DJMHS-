@@ -1,5 +1,6 @@
 const prisma = require('../config/db');
 const { sendSMS } = require('../services/communication.service');
+const { exportToExcel } = require('../services/excel.service');
 
 // ===================== ADMISSION INQUIRY LEADS =====================
 
@@ -169,6 +170,65 @@ const broadcastAnnouncement = async (req, res, next) => {
   }
 };
 
+/**
+ * Export CRM Admission Inquiry Leads to Excel
+ */
+const exportInquiriesToExcel = async (req, res, next) => {
+  try {
+    const { status, search } = req.query;
+    const where = { deletedAt: null };
+
+    if (status && status !== 'all') {
+      where.status = status;
+    }
+
+    if (search && search.trim() !== '') {
+      where.OR = [
+        { studentName: { contains: search, mode: 'insensitive' } },
+        { parentName: { contains: search, mode: 'insensitive' } },
+        { inquiryNo: { contains: search, mode: 'insensitive' } },
+        { phone: { contains: search } },
+        { email: { contains: search, mode: 'insensitive' } },
+      ];
+    }
+
+    const inquiries = await prisma.admissionInquiry.findMany({
+      where,
+      orderBy: { createdAt: 'desc' },
+    });
+
+    const columns = [
+      { header: 'Inquiry Reference No', key: 'inquiryNo' },
+      { header: 'Prospective Student', key: 'studentName' },
+      { header: 'Guardian / Parent', key: 'parentName' },
+      { header: 'Contact Number', key: 'phone' },
+      { header: 'Email Address', key: 'email' },
+      { header: 'Inquiry Status', key: 'status' },
+      { header: 'Submission Date', key: 'createdAt' },
+      { header: 'Internal Notes', key: 'notes' },
+    ];
+
+    const rows = inquiries.map((inq) => ({
+      inquiryNo: inq.inquiryNo || 'N/A',
+      studentName: inq.studentName || 'N/A',
+      parentName: inq.parentName || 'N/A',
+      phone: inq.phone || 'N/A',
+      email: inq.email || 'N/A',
+      status: inq.status || 'NEW',
+      createdAt: inq.createdAt ? new Date(inq.createdAt).toISOString().split('T')[0] : 'N/A',
+      notes: inq.notes || 'None',
+    }));
+
+    const buffer = await exportToExcel('Admission Inquiry Leads', columns, rows);
+
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.setHeader('Content-Disposition', `attachment; filename="DJMHS_Admission_Leads_${Date.now()}.xlsx"`);
+    res.send(buffer);
+  } catch (err) {
+    next(err);
+  }
+};
+
 module.exports = {
   getInquiries,
   createInquiry,
@@ -178,4 +238,5 @@ module.exports = {
   resolveComplaint,
   getAnnouncements,
   broadcastAnnouncement,
+  exportInquiriesToExcel,
 };

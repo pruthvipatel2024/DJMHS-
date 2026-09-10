@@ -59,6 +59,13 @@ export const CrmService = {
     const res = await api.put(`/crm/inquiries/${id}/status`, { status, notes });
     return res.data.data;
   },
+  exportExcel: async (params?: { status?: string; search?: string }): Promise<Blob> => {
+    const res = await api.get('/crm/inquiries/export', {
+      params,
+      responseType: 'blob',
+    });
+    return res.data;
+  },
 
   // Complaints
   getComplaints: async (params?: { status?: string; priority?: string }): Promise<Complaint[]> => {

@@ -14,8 +14,10 @@ router.get('/', authorizeRoles('ADMIN', 'TEACHER'), settingsController.getSettin
 router.get('/subjects', authorizeRoles('ADMIN', 'TEACHER'), settingsController.getSubjects);
 router.get('/subject-allocations', authorizeRoles('ADMIN', 'TEACHER'), settingsController.getSubjectAllocations);
 
-// Mutations restricted to Admin
+// Mutations & Backups restricted to Admin
 router.use(authorizeRoles('ADMIN'));
+router.get('/backup/json', settingsController.downloadJsonBackup);
+router.get('/backup/excel', settingsController.downloadExcelBackup);
 router.post('/param', settingsController.updateSetting);
 
 // Department CRUD

@@ -1,6 +1,7 @@
 const prisma = require('../config/db');
 const { sendSMS, sendEmail } = require('../services/communication.service');
 const { generateFeeReceiptPdf } = require('../services/pdf.service');
+const { exportToExcel } = require('../services/excel.service');
 
 /**
  * Get fee ledgers and installments for a student or division
@@ -174,9 +175,81 @@ const downloadFeeReceiptPdf = async (req, res, next) => {
   }
 };
 
+/**
+ * Export Fee Installments and Collections to Excel workbook
+ */
+const exportFeesToExcel = async (req, res, next) => {
+  try {
+    const { studentId, status, isDefaulters } = req.query;
+    const where = {};
+    if (studentId && studentId !== 'all') where.studentId = studentId;
+    if (status && status !== 'all') where.status = status;
+
+    if (isDefaulters === 'true') {
+      where.status = 'PENDING';
+      where.dueDate = { lt: new Date() };
+    }
+
+    const installments = await prisma.feeInstallment.findMany({
+      where,
+      include: {
+        student: {
+          include: {
+            division: { include: { standard: true } },
+            parents: { include: { parent: true } },
+          },
+        },
+        payments: true,
+      },
+      orderBy: { dueDate: 'asc' },
+    });
+
+    const columns = [
+      { header: 'Installment Title', key: 'title' },
+      { header: 'Student Name', key: 'studentName' },
+      { header: 'GR Number', key: 'grNumber' },
+      { header: 'Standard & Division', key: 'cohort' },
+      { header: 'Due Date', key: 'dueDate' },
+      { header: 'Amount Due (INR)', key: 'amount' },
+      { header: 'Amount Paid (INR)', key: 'paidAmount' },
+      { header: 'Balance Due (INR)', key: 'balance' },
+      { header: 'Payment Status', key: 'status' },
+      { header: 'Guardian Mobile', key: 'guardianPhone' },
+    ];
+
+    const rows = installments.map((inst) => {
+      const primaryParent = inst.student?.parents?.find((p) => p.isPrimary)?.parent || inst.student?.parents?.[0]?.parent;
+      const totalPaid = inst.payments?.reduce((acc, p) => acc + (p.amount || 0), 0) || (inst.status === 'PAID' ? inst.amount : 0);
+      const balance = Math.max(0, inst.amount - totalPaid);
+
+      return {
+        title: inst.title || 'Tuition Fee Installment',
+        studentName: inst.student ? `${inst.student.firstName} ${inst.student.lastName}` : 'N/A',
+        grNumber: inst.student?.grNumber || 'N/A',
+        cohort: inst.student?.division ? `${inst.student.division.standard?.name || ''} - Div ${inst.student.division.name}` : 'N/A',
+        dueDate: inst.dueDate ? new Date(inst.dueDate).toISOString().split('T')[0] : 'N/A',
+        amount: Number(inst.amount || 0).toLocaleString('en-IN'),
+        paidAmount: Number(totalPaid).toLocaleString('en-IN'),
+        balance: Number(balance).toLocaleString('en-IN'),
+        status: inst.status || 'PENDING',
+        guardianPhone: primaryParent?.phone || 'N/A',
+      };
+    });
+
+    const buffer = await exportToExcel('Fee Collection Ledger', columns, rows);
+
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.setHeader('Content-Disposition', `attachment; filename="DJMHS_Fee_Ledger_${Date.now()}.xlsx"`);
+    res.send(buffer);
+  } catch (err) {
+    next(err);
+  }
+};
+
 module.exports = {
   getFeeInstallments,
   collectFeePayment,
   notifyDefaulters,
   downloadFeeReceiptPdf,
+  exportFeesToExcel,
 };

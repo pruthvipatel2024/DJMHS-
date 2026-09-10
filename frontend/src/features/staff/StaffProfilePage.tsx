@@ -147,31 +147,43 @@ const StaffProfilePage: React.FC = () => {
               <h4 className="text-sm font-black text-slate-800 mb-3 flex items-center gap-2">
                 <Users className="w-4 h-4 text-primary-600" /> Class Teacher Homeroom Assignment
               </h4>
-              {staff?.classTeacherOf?.map((c: any, idx: number) => (
-                <div key={idx} className="p-4 rounded-xl bg-primary-50/50 border border-primary-200 text-xs flex justify-between items-center font-bold">
-                  <span>{c.division?.standard?.name || 'Standard 10'} — Division {c.division?.name || 'A'}</span>
-                  <span className="text-primary-700">{c.division?.roomNumber || 'Room 101'}</span>
+              {staff?.classTeacherOf && staff.classTeacherOf.length > 0 ? (
+                staff.classTeacherOf.map((c: any, idx: number) => (
+                  <div key={idx} className="p-4 rounded-xl bg-primary-50/50 border border-primary-200 text-xs flex justify-between items-center font-bold">
+                    <span>{c.division?.standard?.name || 'Standard'} — Division {c.division?.name || 'A'}</span>
+                    <span className="text-primary-700">{c.division?.roomNumber || 'Room Unassigned'}</span>
+                  </div>
+                ))
+              ) : (
+                <div className="p-4 rounded-xl bg-slate-50 border border-dashed border-slate-200 text-xs text-slate-400 font-medium text-center">
+                  Not assigned as a class teacher for any homeroom division.
                 </div>
-              ))}
+              )}
             </div>
 
             <div>
               <h4 className="text-sm font-black text-slate-800 mb-3 flex items-center gap-2">
                 <BookOpen className="w-4 h-4 text-primary-600" /> Subject Teaching Responsibilities
               </h4>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                {staff?.subjectTeachings?.map((st: any, i: number) => (
-                  <div key={i} className="p-4 rounded-xl border border-slate-200 bg-slate-50 text-xs flex justify-between items-center">
-                    <div>
-                      <div className="font-extrabold text-slate-800">{st.subject?.name || 'Mathematics'}</div>
-                      <div className="text-[10px] text-slate-400">{st.subject?.code || 'MATH-10'}</div>
+              {staff?.subjectTeachings && staff.subjectTeachings.length > 0 ? (
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  {staff.subjectTeachings.map((st: any, i: number) => (
+                    <div key={i} className="p-4 rounded-xl border border-slate-200 bg-slate-50 text-xs flex justify-between items-center">
+                      <div>
+                        <div className="font-extrabold text-slate-800">{st.subject?.name || 'Subject'}</div>
+                        <div className="text-[10px] text-slate-400">{st.subject?.code || ''}</div>
+                      </div>
+                      <span className="px-2.5 py-1 rounded-md bg-white font-extrabold text-primary-700 border border-slate-200">
+                        {st.division?.standard?.name ? `${st.division.standard.name} (${st.division.name})` : `Div ${st.division?.name || ''}`}
+                      </span>
                     </div>
-                    <span className="px-2.5 py-1 rounded-md bg-white font-extrabold text-primary-700 border border-slate-200">
-                      Std {st.division?.name || '10-A'}
-                    </span>
-                  </div>
-                ))}
-              </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="p-4 rounded-xl bg-slate-50 border border-dashed border-slate-200 text-xs text-slate-400 font-medium text-center">
+                  No specific subject teaching allocations assigned yet.
+                </div>
+              )}
             </div>
           </div>
         )}

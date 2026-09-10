@@ -58,31 +58,34 @@ const getAllStaff = async (req, res, next) => {
       }
 
       for (const u of unlinkedUsers) {
-        const count = await prisma.staff.count();
-        const empId = `DJMHS-EMP-${(count + 1).toString().padStart(4, '0')}`;
-        const cleanId = (u.email || u.identifier || 'faculty.member').split('@')[0];
-        const parts = cleanId.split('.');
-        const firstName = parts[0] ? (parts[0].charAt(0).toUpperCase() + parts[0].slice(1)) : 'Faculty';
-        const lastName = parts[1] ? (parts[1].charAt(0).toUpperCase() + parts[1].slice(1)) : 'Member';
+        try {
+          const count = await prisma.staff.count();
+          const empId = `DJMHS-EMP-${(count + 1 + Math.floor(Math.random() * 100)).toString().padStart(4, '0')}`;
+          const cleanId = (u.email || u.identifier || 'faculty.member').split('@')[0];
+          const parts = cleanId.split('.');
+          const firstName = parts[0] ? (parts[0].charAt(0).toUpperCase() + parts[0].slice(1)) : 'Faculty';
+          const lastName = parts[1] ? (parts[1].charAt(0).toUpperCase() + parts[1].slice(1)) : 'Member';
+          const uniquePhone = u.phone || `98${Math.floor(10000000 + Math.random() * 90000000)}`;
 
-        await prisma.staff.create({
-          data: {
-            userId: u.id,
-            empId,
-            firstName,
-            lastName,
-            gender: 'Male',
-            dob: new Date('1990-01-01'),
-            designation: u.roleId === teacherRoles.find(r => r.name === 'ADMIN')?.id ? 'PRINCIPAL' : 'TEACHER',
-            joinDate: new Date(),
-            departmentId: defaultDept.id,
-            email: u.email || `${u.identifier}@sdjmt.edu.in`,
-            phone: u.phone || '9876543210',
-            address: 'Bhavnagar, Gujarat',
-          },
-        }).catch((err) => {
+          await prisma.staff.create({
+            data: {
+              userId: u.id,
+              empId,
+              firstName,
+              lastName,
+              gender: 'Male',
+              dob: new Date('1990-01-01'),
+              designation: u.roleId === teacherRoles.find(r => r.name === 'ADMIN')?.id ? 'PRINCIPAL' : 'TEACHER',
+              joinDate: new Date(),
+              departmentId: defaultDept.id,
+              email: u.email || `${cleanId}.${Math.floor(100 + Math.random() * 900)}@sdjmt.edu.in`,
+              phone: uniquePhone,
+              address: 'Bhavnagar, Gujarat',
+            },
+          });
+        } catch (err) {
           console.warn('[Staff Reconcile] Notice:', err.message);
-        });
+        }
       }
     }
 
@@ -222,15 +225,14 @@ const createStaff = async (req, res, next) => {
           },
         });
       } else {
+        // When user already exists, update their contact & status without overwriting their existing passwordHash or isFirstLogin
         newUser = await tx.user.update({
           where: { id: existingUser.id },
           data: {
-            identifier: cleanEmail || empId,
+            identifier: cleanEmail || existingUser.identifier || empId,
             email: cleanEmail || existingUser.email,
             phone: cleanPhone || existingUser.phone,
-            passwordHash: passwordHash,
             roleId: teacherRole.id,
-            isFirstLogin: true,
             isActive: true,
             deletedAt: null,
             isLocked: false,
@@ -534,6 +536,79 @@ const bulkImportStaff = async (req, res, next) => {
   }
 };
 
+/**
+ * Export Staff & Faculty directory to Excel workbook
+ */
+const exportStaffToExcel = async (req, res, next) => {
+  try {
+    const { departmentId, designation, search } = req.query;
+    const where = { deletedAt: null };
+
+    if (departmentId && departmentId !== 'all' && departmentId !== 'undefined' && departmentId.trim() !== '') {
+      where.departmentId = departmentId;
+    }
+    if (designation && designation !== 'all' && designation !== 'undefined' && designation.trim() !== '') {
+      where.designation = designation;
+    }
+    if (search && search.trim() !== '') {
+      where.OR = [
+        { firstName: { contains: search, mode: 'insensitive' } },
+        { lastName: { contains: search, mode: 'insensitive' } },
+        { empId: { contains: search, mode: 'insensitive' } },
+        { phone: { contains: search } },
+        { email: { contains: search, mode: 'insensitive' } },
+      ];
+    }
+
+    const staffList = await prisma.staff.findMany({
+      where,
+      include: {
+        department: true,
+        user: { include: { role: true } },
+      },
+      orderBy: [{ department: { name: 'asc' } }, { firstName: 'asc' }],
+    });
+
+    const columns = [
+      { header: 'Employee ID', key: 'empId' },
+      { header: 'Full Name', key: 'name' },
+      { header: 'Designation', key: 'designation' },
+      { header: 'Department', key: 'department' },
+      { header: 'Phone Number', key: 'phone' },
+      { header: 'Email Address', key: 'email' },
+      { header: 'Gender', key: 'gender' },
+      { header: 'Date of Birth', key: 'dob' },
+      { header: 'Joining Date', key: 'joinDate' },
+      { header: 'Employment Type', key: 'employmentType' },
+      { header: 'Residential Address', key: 'address' },
+      { header: 'Account Status', key: 'status' },
+    ];
+
+    const rows = staffList.map((s) => ({
+      empId: s.empId || 'N/A',
+      name: `${s.firstName || ''} ${s.lastName || ''}`.trim(),
+      designation: s.designation ? s.designation.replace(/_/g, ' ') : 'TEACHER',
+      department: s.department?.name || 'General',
+      phone: s.phone || 'N/A',
+      email: s.email || s.user?.email || 'N/A',
+      gender: s.gender || 'N/A',
+      dob: s.dob ? new Date(s.dob).toISOString().split('T')[0] : 'N/A',
+      joinDate: s.joinDate ? new Date(s.joinDate).toISOString().split('T')[0] : 'N/A',
+      employmentType: s.employmentType || 'PERMANENT',
+      address: s.address || 'N/A',
+      status: s.user?.isActive !== false ? 'ACTIVE' : 'INACTIVE',
+    }));
+
+    const buffer = await exportToExcel('Staff Directory', columns, rows);
+
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.setHeader('Content-Disposition', `attachment; filename="DJMHS_Staff_Roster_${Date.now()}.xlsx"`);
+    res.send(buffer);
+  } catch (err) {
+    next(err);
+  }
+};
+
 module.exports = {
   getAllStaff,
   getStaffById,
@@ -541,4 +616,5 @@ module.exports = {
   updateStaff,
   deleteStaff,
   bulkImportStaff,
+  exportStaffToExcel,
 };

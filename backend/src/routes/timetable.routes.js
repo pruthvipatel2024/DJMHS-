@@ -9,6 +9,9 @@ router.use(authenticate);
 router.get('/', authorizeRoles('ADMIN', 'TEACHER', 'STUDENT', 'PARENT'), timetableController.getTimetable);
 router.post('/slot', authorizeRoles('ADMIN'), timetableController.setTimetableSlot);
 router.delete('/slot/:id', authorizeRoles('ADMIN'), timetableController.deleteTimetableSlot);
+router.delete('/clear-division/:divisionId', authorizeRoles('ADMIN'), timetableController.clearDivisionTimetable);
+router.delete('/clear-all', authorizeRoles('ADMIN'), timetableController.clearAllTimetable);
+router.delete('/clear-staff/:staffId', authorizeRoles('ADMIN'), timetableController.clearStaffTimetable);
 
 // Automatic Timetable Draft Generator Endpoints
 router.post('/generate-draft', authorizeRoles('ADMIN'), timetableController.handleGenerateDraft);

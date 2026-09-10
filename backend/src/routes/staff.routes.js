@@ -9,6 +9,7 @@ router.use(authenticate);
 
 // Directory view accessible by both Admin and Teachers
 router.get('/', authorizeRoles('ADMIN', 'TEACHER'), staffController.getAllStaff);
+router.get('/export', authorizeRoles('ADMIN', 'TEACHER'), staffController.exportStaffToExcel);
 router.get('/:id', authorizeRoles('ADMIN', 'TEACHER'), staffController.getStaffById);
 
 // Operations restricted to Executive Admin

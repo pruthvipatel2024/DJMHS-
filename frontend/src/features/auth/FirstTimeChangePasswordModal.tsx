@@ -45,10 +45,10 @@ const FirstTimeChangePasswordModal: React.FC = () => {
 
     setLoading(true);
     try {
-      await api.post('/auth/first-time-change-password', { newPassword });
+      const res = await api.post('/auth/first-time-change-password', { newPassword });
       setSuccess(true);
       setTimeout(() => {
-        const updated = { ...user, isFirstLogin: false };
+        const updated = res.data?.user || { ...user, isFirstLogin: false };
         updateUser(updated);
       }, 1200);
     } catch (err: any) {

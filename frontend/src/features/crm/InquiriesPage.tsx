@@ -43,6 +43,23 @@ const InquiriesPage: React.FC = () => {
     setTimeout(() => setToastMsg(null), 5000);
   };
 
+  const handleExportExcel = async () => {
+    try {
+      const blob = await CrmService.exportExcel();
+      const url = window.URL.createObjectURL(new Blob([blob]));
+      const link = document.createElement('a');
+      link.href = url;
+      link.setAttribute('download', `DJMHS_Admission_Leads_${Date.now()}.xlsx`);
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(url);
+    } catch (e) {
+      setToastMsg('Failed to export admission leads Excel workbook.');
+      setTimeout(() => setToastMsg(null), 3500);
+    }
+  };
+
   const columns: Column<any>[] = [
     {
       header: t('prospective_pupil_name'),
@@ -129,7 +146,7 @@ const InquiriesPage: React.FC = () => {
         subtitle={t('prospective_lead_subtitle')}
         data={inquiries}
         columns={columns}
-        onExportExcel={() => alert('Exporting Admission Inquiry Pipeline to Excel (DJMHS_Admission_Leads.xlsx)...')}
+        onExportExcel={handleExportExcel}
         searchPlaceholder={t('search_inquiry_placeholder')}
       />
 

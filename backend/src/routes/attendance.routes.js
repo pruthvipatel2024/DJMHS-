@@ -7,6 +7,7 @@ const { authorizeRoles } = require('../middleware/rbac.middleware');
 router.use(authenticate);
 
 router.get('/division', authorizeRoles('ADMIN', 'TEACHER'), attendanceController.getAttendanceByDivision);
+router.get('/export', authorizeRoles('ADMIN', 'TEACHER'), attendanceController.exportAttendanceToExcel);
 router.post('/mark', authorizeRoles('ADMIN', 'TEACHER'), attendanceController.markAttendance);
 router.get('/report', authorizeRoles('ADMIN', 'TEACHER'), attendanceController.getAttendanceReport);
 

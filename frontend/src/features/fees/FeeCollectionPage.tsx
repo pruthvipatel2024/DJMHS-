@@ -70,6 +70,25 @@ const FeeCollectionPage: React.FC = () => {
     setTimeout(() => setToastMsg(null), 5000);
   };
 
+  const handleExportExcel = async () => {
+    try {
+      const blob = await FeeService.exportExcel({
+        isDefaulters: activeTab === 'defaulters',
+      });
+      const url = window.URL.createObjectURL(new Blob([blob]));
+      const link = document.createElement('a');
+      link.href = url;
+      link.setAttribute('download', `DJMHS_Fee_Ledger_${Date.now()}.xlsx`);
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(url);
+    } catch (e) {
+      setToastMsg('Failed to export fee ledger Excel workbook.');
+      setTimeout(() => setToastMsg(null), 3500);
+    }
+  };
+
   const columns: Column<any>[] = [
     {
       header: t('student_and_gr'),
@@ -198,7 +217,7 @@ const FeeCollectionPage: React.FC = () => {
         subtitle="Search student by GR Number to record offline/online payment receipts"
         data={installments}
         columns={columns}
-        onExportExcel={() => alert('Exporting Fee Collection Financial Ledger to Excel (DJMHS_Fee_Ledger.xlsx)...')}
+        onExportExcel={handleExportExcel}
         searchPlaceholder={t('search_fee_placeholder')}
       />
 

@@ -20,6 +20,9 @@ import {
   School,
   Sparkles,
   Info,
+  FileSpreadsheet,
+  Download,
+  Database,
 } from 'lucide-react';
 import api from '../../services/api';
 import SettingsService, { SubjectItem, StaffSubjectAllocation } from '../../services/settings.service';
@@ -47,6 +50,8 @@ const SettingsPage: React.FC = () => {
   const [allocations, setAllocations] = useState<StaffSubjectAllocation[]>([]);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const [downloadingJson, setDownloadingJson] = useState(false);
+  const [downloadingExcel, setDownloadingExcel] = useState(false);
 
   // General tab states
   const [newDeptName, setNewDeptName] = useState('');
@@ -496,6 +501,52 @@ const SettingsPage: React.FC = () => {
     if (!activeAllocationStandard) return [];
     return activeAllocationStandard.subjects || [];
   }, [activeAllocationStandard]);
+
+  const handleDownloadJsonBackup = async () => {
+    setDownloadingJson(true);
+    setErrorMsg(null);
+    try {
+      const blob = await SettingsService.downloadJsonBackup();
+      const url = window.URL.createObjectURL(new Blob([blob], { type: 'application/json' }));
+      const link = document.createElement('a');
+      link.href = url;
+      link.setAttribute('download', `DJMHS_Complete_Institutional_Backup_${Date.now()}.json`);
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(url);
+      setSuccessMsg('Complete institutional JSON backup archive generated and downloaded successfully!');
+      setTimeout(() => setSuccessMsg(null), 5000);
+    } catch (e) {
+      setErrorMsg('Failed to generate institutional JSON backup. Please try again.');
+      setTimeout(() => setErrorMsg(null), 5000);
+    } finally {
+      setDownloadingJson(false);
+    }
+  };
+
+  const handleDownloadExcelBackup = async () => {
+    setDownloadingExcel(true);
+    setErrorMsg(null);
+    try {
+      const blob = await SettingsService.downloadExcelBackup();
+      const url = window.URL.createObjectURL(new Blob([blob]));
+      const link = document.createElement('a');
+      link.href = url;
+      link.setAttribute('download', `DJMHS_Complete_Institutional_Workbook_${Date.now()}.xlsx`);
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(url);
+      setSuccessMsg('Complete multi-sheet institutional Excel workbook generated and downloaded successfully!');
+      setTimeout(() => setSuccessMsg(null), 5000);
+    } catch (e) {
+      setErrorMsg('Failed to generate multi-sheet Excel workbook. Please try again.');
+      setTimeout(() => setErrorMsg(null), 5000);
+    } finally {
+      setDownloadingExcel(false);
+    }
+  };
 
   if (loading) return <LoadingSkeleton rows={4} />;
 
@@ -1313,32 +1364,102 @@ const SettingsPage: React.FC = () => {
         {activeTab === 'backup' && (
           <div className="space-y-6">
             <div className="pb-4 border-b border-slate-100 space-y-1">
-              <h3 className="text-base font-bold text-slate-800">Single-School Administrative Database Snapshot & Backup</h3>
-              <p className="text-xs text-slate-500">Download immediate JSON/SQL snapshots of all institutional ledgers, pupil profiles, staff records, subjects, and marks to local storage for offline preservation.</p>
+              <div className="inline-flex items-center gap-1.5 text-[10px] font-extrabold uppercase px-2.5 py-0.5 rounded bg-primary-50 text-primary-700 border border-primary-200">
+                <Database className="w-3.5 h-3.5" /> Institutional Data Archival Desk
+              </div>
+              <h3 className="text-xl font-black text-slate-800">Complete System Backup & Data Books</h3>
+              <p className="text-xs text-slate-500">
+                Download complete, un-truncated institutional backups in multi-sheet Excel workbooks or standardized JSON archives for offline audit, regulatory compliance, or client archival.
+              </p>
             </div>
 
-            <div className="p-6 rounded-2xl bg-amber-50 border border-amber-200 space-y-4">
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-                <div>
-                  <h4 className="font-extrabold text-amber-950 text-sm">Full Institutional Database Backup</h4>
-                  <p className="text-xs text-amber-800">Includes Students, Staff, Subjects, Teacher Allocations, Timetable, Fee Receipts, and Settings for Academic Year 2026-2027.</p>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+              {/* Option 1: Multi-Sheet Excel Workbook */}
+              <div className="p-6 rounded-2xl bg-gradient-to-br from-emerald-50/80 to-teal-50/40 border border-emerald-200/80 shadow-soft flex flex-col justify-between space-y-5">
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between">
+                    <div className="w-12 h-12 rounded-xl bg-emerald-600 text-white flex items-center justify-center font-black shadow-md shadow-emerald-600/20">
+                      <FileSpreadsheet className="w-6 h-6" />
+                    </div>
+                    <span className="text-[10px] uppercase font-black px-2.5 py-1 rounded-full bg-emerald-100 text-emerald-800 border border-emerald-300/80">
+                      15 Formatted Sheets
+                    </span>
+                  </div>
+
+                  <div>
+                    <h4 className="font-extrabold text-slate-900 text-base">Complete Multi-Sheet Excel Workbook (.XLSX)</h4>
+                    <p className="text-xs text-slate-600 mt-1.5 leading-relaxed">
+                      Generates a comprehensive, beautifully styled Excel workbook containing dedicated tabs for <strong>Students General Register</strong>, <strong>Faculty & Staff</strong>, <strong>Class Allocations</strong>, <strong>Master Timetable</strong>, <strong>Fee Ledgers</strong>, <strong>Attendance Records</strong>, <strong>Exam Marks</strong>, <strong>Inquiries</strong>, <strong>Complaints</strong>, and <strong>Curriculum Structure</strong> with auto-fitted column widths and custom row heights.
+                    </p>
+                  </div>
                 </div>
-                <button
-                  onClick={() => {
-                    const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify({ ...data, allocations }, null, 2));
-                    const downloadAnchor = document.createElement('a');
-                    downloadAnchor.setAttribute("href", dataStr);
-                    downloadAnchor.setAttribute("download", `DJMHS_ERP_Backup_${new Date().toISOString().split('T')[0]}.json`);
-                    document.body.appendChild(downloadAnchor);
-                    downloadAnchor.click();
-                    downloadAnchor.remove();
-                    setSuccessMsg('Database snapshot generated and downloaded successfully!');
-                    setTimeout(() => setSuccessMsg(null), 4000);
-                  }}
-                  className="px-6 py-3 rounded-xl bg-amber-600 hover:bg-amber-700 text-white font-extrabold text-xs shadow-md transition flex items-center gap-2 flex-shrink-0"
-                >
-                  <Shield className="w-4 h-4" /> Download Complete Backup (.JSON)
-                </button>
+
+                <div className="pt-4 border-t border-emerald-200/60 flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
+                  <div className="text-[11px] text-emerald-800 font-bold flex items-center gap-1.5">
+                    <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 flex-shrink-0" />
+                    Dynamic Column Auto-Fitting
+                  </div>
+                  <button
+                    onClick={handleDownloadExcelBackup}
+                    disabled={downloadingExcel}
+                    className="px-5 py-3 rounded-xl bg-emerald-600 hover:bg-emerald-700 disabled:opacity-60 text-white font-extrabold text-xs shadow-md shadow-emerald-600/30 transition flex items-center justify-center gap-2 cursor-pointer"
+                  >
+                    {downloadingExcel ? (
+                      <>
+                        <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                        Generating Workbook...
+                      </>
+                    ) : (
+                      <>
+                        <Download className="w-4 h-4" /> Download Complete Excel (.XLSX)
+                      </>
+                    )}
+                  </button>
+                </div>
+              </div>
+
+              {/* Option 2: Full JSON Database Archive */}
+              <div className="p-6 rounded-2xl bg-gradient-to-br from-amber-50/80 to-orange-50/40 border border-amber-200/80 shadow-soft flex flex-col justify-between space-y-5">
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between">
+                    <div className="w-12 h-12 rounded-xl bg-amber-600 text-white flex items-center justify-center font-black shadow-md shadow-amber-600/20">
+                      <Shield className="w-6 h-6" />
+                    </div>
+                    <span className="text-[10px] uppercase font-black px-2.5 py-1 rounded-full bg-amber-100 text-amber-800 border border-amber-300/80">
+                      Full JSON Dump
+                    </span>
+                  </div>
+
+                  <div>
+                    <h4 className="font-extrabold text-slate-900 text-base">Complete Database Snapshot (.JSON)</h4>
+                    <p className="text-xs text-slate-600 mt-1.5 leading-relaxed">
+                      Generates a standardized, encrypted-ready JSON dataset encapsulating all database collections, academic relations, configuration profiles, and system audit logs with passwords safely stripped. Ideal for full offline backups, data portability, and disaster recovery.
+                    </p>
+                  </div>
+                </div>
+
+                <div className="pt-4 border-t border-amber-200/60 flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
+                  <div className="text-[11px] text-amber-800 font-bold flex items-center gap-1.5">
+                    <CheckCircle2 className="w-3.5 h-3.5 text-amber-600 flex-shrink-0" />
+                    Relational Schema Preserved
+                  </div>
+                  <button
+                    onClick={handleDownloadJsonBackup}
+                    disabled={downloadingJson}
+                    className="px-5 py-3 rounded-xl bg-amber-600 hover:bg-amber-700 disabled:opacity-60 text-white font-extrabold text-xs shadow-md shadow-amber-600/30 transition flex items-center justify-center gap-2 cursor-pointer"
+                  >
+                    {downloadingJson ? (
+                      <>
+                        <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                        Exporting JSON...
+                      </>
+                    ) : (
+                      <>
+                        <Download className="w-4 h-4" /> Download Complete JSON (.JSON)
+                      </>
+                    )}
+                  </button>
+                </div>
               </div>
             </div>
           </div>

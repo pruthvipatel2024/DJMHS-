@@ -26,6 +26,7 @@ import {
 import { useAuth } from '../features/auth/AuthContext';
 import { useTranslation } from 'react-i18next';
 import LanguageSwitcher from '../components/LanguageSwitcher';
+import NotificationDropdown from '../components/Notifications/NotificationDropdown';
 import logo from '../assets/logo.png';
 
 const navItems = [
@@ -147,12 +148,8 @@ const AdminLayout: React.FC = () => {
               {t('sessions')}
             </Link>
 
-            {/* Notifications */}
-            <button className="relative p-2 sm:p-2.5 text-slate-600 hover:bg-slate-100 rounded-xl border border-slate-200 transition">
-              <Bell className="w-4 h-4" />
-              <span className="absolute top-2 right-2 w-2 h-2 rounded-full bg-accent-500 animate-ping"></span>
-              <span className="absolute top-2 right-2 w-2 h-2 rounded-full bg-accent-500"></span>
-            </button>
+            {/* Notifications Dropdown */}
+            <NotificationDropdown align="right" />
 
             {/* Profile Menu Toggle */}
             <div className="relative">

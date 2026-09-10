@@ -17,6 +17,7 @@ import {
 import { useAuth } from '../features/auth/AuthContext';
 import { useTranslation } from 'react-i18next';
 import LanguageSwitcher from '../components/LanguageSwitcher';
+import NotificationDropdown from '../components/Notifications/NotificationDropdown';
 import logo from '../assets/logo.png';
 import { getFullPhotoUrl } from '../utils/photo.utils';
 
@@ -155,9 +156,7 @@ const TeacherLayout: React.FC = () => {
           <div className="flex items-center gap-3 flex-shrink-0">
             <LanguageSwitcher />
             
-            <button className="p-2 sm:p-2.5 text-slate-600 hover:bg-slate-100 rounded-xl border border-slate-200 transition">
-              <Bell className="w-4 h-4" />
-            </button>
+            <NotificationDropdown align="right" />
 
             {/* Header User Badge */}
             <div className="hidden sm:flex items-center gap-2 pl-2 border-l border-slate-200">

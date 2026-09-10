@@ -131,6 +131,20 @@ export const SettingsService = {
   deleteSubjectAllocation: async (id: string): Promise<void> => {
     await api.delete(`/settings/subject-allocations/${id}`);
   },
+
+  downloadJsonBackup: async (): Promise<Blob> => {
+    const res = await api.get('/settings/backup/json', {
+      responseType: 'blob',
+    });
+    return res.data;
+  },
+
+  downloadExcelBackup: async (): Promise<Blob> => {
+    const res = await api.get('/settings/backup/excel', {
+      responseType: 'blob',
+    });
+    return res.data;
+  },
 };
 
 export default SettingsService;

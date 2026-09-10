@@ -205,6 +205,66 @@ const handleApproveDraft = async (req, res, next) => {
   }
 };
 
+/**
+ * Clear all timetable entries for a specific division
+ */
+const clearDivisionTimetable = async (req, res, next) => {
+  try {
+    const { divisionId } = req.params;
+    if (!divisionId) {
+      return res.status(400).json({ success: false, message: 'Division ID required.' });
+    }
+    const result = await prisma.timetable.deleteMany({
+      where: { divisionId },
+    });
+    res.status(200).json({
+      success: true,
+      message: `Cleared all ${result.count} timetable assignments for this class division.`,
+      data: { count: result.count },
+    });
+  } catch (err) {
+    next(err);
+  }
+};
+
+/**
+ * Clear all timetable entries across the entire institution
+ */
+const clearAllTimetable = async (req, res, next) => {
+  try {
+    const result = await prisma.timetable.deleteMany({});
+    res.status(200).json({
+      success: true,
+      message: `All ${result.count} timetable assignments cleared across the institution.`,
+      data: { count: result.count },
+    });
+  } catch (err) {
+    next(err);
+  }
+};
+
+/**
+ * Clear all timetable entries for a specific staff member
+ */
+const clearStaffTimetable = async (req, res, next) => {
+  try {
+    const { staffId } = req.params;
+    if (!staffId) {
+      return res.status(400).json({ success: false, message: 'Staff ID required.' });
+    }
+    const result = await prisma.timetable.deleteMany({
+      where: { staffId },
+    });
+    res.status(200).json({
+      success: true,
+      message: `Cleared ${result.count} timetable assignments for selected faculty member.`,
+      data: { count: result.count },
+    });
+  } catch (err) {
+    next(err);
+  }
+};
+
 module.exports = {
   getTimetable,
   setTimetableSlot,
@@ -212,4 +272,7 @@ module.exports = {
   handleGenerateDraft,
   handleUpdateDraftSlot,
   handleApproveDraft,
+  clearDivisionTimetable,
+  clearStaffTimetable,
+  clearAllTimetable,
 };

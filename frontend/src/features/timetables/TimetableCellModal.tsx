@@ -70,7 +70,7 @@ const TimetableCellModal: React.FC<TimetableCellModalProps> = ({
           setStaffId(initialData.staffId || '');
           setRoomNumber(initialData.roomNumber || currentDivision?.roomNumber || '');
         } else {
-          setRoomNumber(currentDivision?.roomNumber || 'Room 101');
+          setRoomNumber(currentDivision?.roomNumber || '');
           if (stdSubjects.length > 0 && !subjectId) {
             const firstSub = stdSubjects[0];
             setSubjectId(firstSub.id);

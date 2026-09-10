@@ -65,6 +65,14 @@ export const FeeService = {
     const res = await api.post('/fees/structures', payload);
     return res.data.data;
   },
+
+  exportExcel: async (params?: FeeInstallmentParams): Promise<Blob> => {
+    const res = await api.get('/fees/export', {
+      params,
+      responseType: 'blob',
+    });
+    return res.data;
+  },
 };
 
 export default FeeService;

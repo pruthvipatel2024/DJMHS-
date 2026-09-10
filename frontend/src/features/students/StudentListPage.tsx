@@ -153,8 +153,10 @@ const StudentListPage: React.FC = () => {
       document.body.appendChild(link);
       link.click();
       link.remove();
+      window.URL.revokeObjectURL(url);
     } catch (e) {
       setToastMsg('Failed to export students Excel workbook.');
+      setTimeout(() => setToastMsg(null), 3500);
     }
   };
 

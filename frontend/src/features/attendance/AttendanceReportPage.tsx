@@ -42,6 +42,25 @@ const AttendanceReportPage: React.FC = () => {
     fetchReport();
   }, [month, selectedDivision]);
 
+  const handleExportExcel = async () => {
+    try {
+      const blob = await AttendanceService.exportExcel({
+        divisionId: selectedDivision || undefined,
+        month,
+      });
+      const url = window.URL.createObjectURL(new Blob([blob]));
+      const link = document.createElement('a');
+      link.href = url;
+      link.setAttribute('download', `DJMHS_Monthly_Attendance_Report_${month}_${Date.now()}.xlsx`);
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(url);
+    } catch (e) {
+      alert('Failed to export monthly attendance report.');
+    }
+  };
+
   if (loading) return <LoadingSkeleton rows={6} />;
 
   const lowAttendanceCount = reportData?.matrix?.filter((r: any) => r.isLowAttendance)?.length || 0;
@@ -63,10 +82,11 @@ const AttendanceReportPage: React.FC = () => {
           <div>
             <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">Month</label>
             <select value={month} onChange={(e) => setMonth(Number(e.target.value))} className="p-2 border border-slate-300 rounded-xl text-xs font-bold bg-white">
-              <option value="6">June 2026</option>
-              <option value="7">July 2026</option>
-              <option value="8">August 2026</option>
-              <option value="9">September 2026</option>
+              {Array.from({ length: 12 }).map((_, i) => (
+                <option key={i + 1} value={i + 1}>
+                  {new Date(0, i).toLocaleString('en', { month: 'long' })}
+                </option>
+              ))}
             </select>
           </div>
 
@@ -88,8 +108,8 @@ const AttendanceReportPage: React.FC = () => {
           </div>
 
           <button
-            onClick={() => alert('Exporting Monthly Attendance Matrix to Excel Spreadsheet (DJMHS_Monthly_Attendance_Report.xlsx)...')}
-            className="px-4 py-2.5 rounded-xl bg-emerald-50 hover:bg-emerald-100 text-emerald-800 font-extrabold text-xs border border-emerald-300 transition flex items-center gap-1.5 self-end"
+            onClick={handleExportExcel}
+            className="px-4 py-2.5 rounded-xl bg-emerald-50 hover:bg-emerald-100 text-emerald-800 font-extrabold text-xs border border-emerald-300 transition flex items-center gap-1.5 self-end cursor-pointer"
           >
             <FileSpreadsheet className="w-4 h-4 text-emerald-600" /> Export Excel
           </button>

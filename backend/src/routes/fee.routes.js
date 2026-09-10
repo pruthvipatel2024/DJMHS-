@@ -7,6 +7,7 @@ const { authorizeRoles } = require('../middleware/rbac.middleware');
 router.use(authenticate);
 
 router.get('/installments', authorizeRoles('ADMIN', 'TEACHER', 'STUDENT', 'PARENT'), feeController.getFeeInstallments);
+router.get('/export', authorizeRoles('ADMIN', 'TEACHER'), feeController.exportFeesToExcel);
 router.post('/collect', authorizeRoles('ADMIN'), feeController.collectFeePayment);
 router.post('/remind-defaulters', authorizeRoles('ADMIN'), feeController.notifyDefaulters);
 router.get('/receipt/pdf', authorizeRoles('ADMIN', 'TEACHER', 'STUDENT', 'PARENT'), feeController.downloadFeeReceiptPdf);

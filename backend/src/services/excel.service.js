@@ -4,37 +4,200 @@ const prisma = require('../config/db');
 /**
  * Create a styled Excel workbook for exported institutional grids
  */
+/**
+ * Create a styled Excel workbook for exported institutional grids with auto-adjusted column width and row height
+ */
 const exportToExcel = async (sheetName, columns, rows) => {
   const workbook = new ExcelJS.Workbook();
   workbook.creator = 'DJMHS High School ERP';
+  workbook.lastModifiedBy = 'DJMHS High School ERP';
   workbook.created = new Date();
+  workbook.modified = new Date();
 
   const sheet = workbook.addWorksheet(sheetName, {
-    properties: { tabColor: { argb: 'FF1D4ED8' } },
+    properties: { tabColor: { argb: 'FF1E3A8A' } },
+    views: [{ state: 'frozen', ySplit: 1 }], // Freeze header row
   });
 
+  // Assign column definitions
   sheet.columns = columns.map((col) => ({
     header: col.header,
     key: col.key,
-    width: col.width || 25,
   }));
 
+  // Style Header Row (Row 1)
   const headerRow = sheet.getRow(1);
-  headerRow.height = 25;
+  headerRow.height = 28; // Comfortable header height
   headerRow.eachCell((cell) => {
     cell.fill = {
       type: 'pattern',
       pattern: 'solid',
-      fgColor: { argb: 'FF1E40AF' },
+      fgColor: { argb: 'FF1E3A8A' }, // Deep institutional navy blue
     };
-    cell.font = { name: 'Inter', family: 4, size: 12, bold: true, color: { argb: 'FFFFFFFF' } };
-    cell.alignment = { vertical: 'middle', horizontal: 'center' };
+    cell.font = {
+      name: 'Calibri',
+      family: 2,
+      size: 11,
+      bold: true,
+      color: { argb: 'FFFFFFFF' },
+    };
+    cell.alignment = {
+      vertical: 'middle',
+      horizontal: 'center',
+      wrapText: true,
+    };
+    cell.border = {
+      top: { style: 'thin', color: { argb: 'FF0F172A' } },
+      left: { style: 'thin', color: { argb: 'FF334155' } },
+      bottom: { style: 'medium', color: { argb: 'FF0F172A' } },
+      right: { style: 'thin', color: { argb: 'FF334155' } },
+    };
   });
 
-  rows.forEach((rowData) => {
+  // Insert and style Data Rows
+  rows.forEach((rowData, index) => {
     const r = sheet.addRow(rowData);
-    r.font = { name: 'Inter', size: 10, color: { argb: 'FF1E293B' } };
-    r.alignment = { vertical: 'middle' };
+    r.height = 22; // Comfortable data row height
+    const isEven = (index + 2) % 2 === 0;
+
+    r.eachCell({ includeEmpty: true }, (cell) => {
+      cell.font = {
+        name: 'Calibri',
+        size: 10,
+        color: { argb: 'FF1E293B' },
+      };
+      cell.alignment = {
+        vertical: 'middle',
+        horizontal: 'left',
+        wrapText: false,
+      };
+      cell.fill = {
+        type: 'pattern',
+        pattern: 'solid',
+        fgColor: { argb: isEven ? 'FFF8FAFC' : 'FFFFFFFF' }, // Subtle zebra striping
+      };
+      cell.border = {
+        top: { style: 'thin', color: { argb: 'FFE2E8F0' } },
+        left: { style: 'thin', color: { argb: 'FFE2E8F0' } },
+        bottom: { style: 'thin', color: { argb: 'FFE2E8F0' } },
+        right: { style: 'thin', color: { argb: 'FFE2E8F0' } },
+      };
+    });
+  });
+
+  // Dynamically calculate and adjust column widths based on maximum content length
+  sheet.columns.forEach((column) => {
+    let maxLen = column.header ? column.header.toString().length : 10;
+    column.eachCell({ includeEmpty: false }, (cell) => {
+      const val = cell.value !== undefined && cell.value !== null ? cell.value.toString() : '';
+      if (val.length > maxLen) {
+        maxLen = val.length;
+      }
+    });
+    // Set auto-adjusted width with comfortable padding (bounded min: 14, max: 48)
+    column.width = Math.min(Math.max(maxLen + 5, 14), 48);
+  });
+
+  return await workbook.xlsx.writeBuffer();
+};
+
+/**
+ * Create a rich multi-sheet Excel workbook with customized tab colors and auto-dimensioned columns/rows
+ * @param {Array<{ sheetName: string, tabColor?: string, columns: Array<{header: string, key: string}>, rows: Array<any> }>} sheets
+ */
+const exportMultiSheetExcel = async (sheets) => {
+  const workbook = new ExcelJS.Workbook();
+  workbook.creator = 'DJMHS High School ERP';
+  workbook.lastModifiedBy = 'DJMHS High School ERP';
+  workbook.created = new Date();
+  workbook.modified = new Date();
+
+  sheets.forEach(({ sheetName, tabColor, columns, rows }) => {
+    // Sanitize sheet name (Excel limits sheet names to 31 chars and no / \ ? * : [ ])
+    const safeSheetName = (sheetName || 'Sheet').replace(/[/\\?*:[\]]/g, '_').substring(0, 31);
+    const colorHex = tabColor ? (tabColor.startsWith('FF') ? tabColor : `FF${tabColor.replace('#', '')}`) : 'FF1E3A8A';
+
+    const sheet = workbook.addWorksheet(safeSheetName, {
+      properties: { tabColor: { argb: colorHex } },
+      views: [{ state: 'frozen', ySplit: 1 }],
+    });
+
+    sheet.columns = (columns || []).map((col) => ({
+      header: col.header,
+      key: col.key,
+    }));
+
+    // Format Header Row
+    const headerRow = sheet.getRow(1);
+    headerRow.height = 28;
+    headerRow.eachCell((cell) => {
+      cell.fill = {
+        type: 'pattern',
+        pattern: 'solid',
+        fgColor: { argb: colorHex },
+      };
+      cell.font = {
+        name: 'Calibri',
+        family: 2,
+        size: 11,
+        bold: true,
+        color: { argb: 'FFFFFFFF' },
+      };
+      cell.alignment = {
+        vertical: 'middle',
+        horizontal: 'center',
+        wrapText: true,
+      };
+      cell.border = {
+        top: { style: 'thin', color: { argb: 'FF0F172A' } },
+        left: { style: 'thin', color: { argb: 'FF334155' } },
+        bottom: { style: 'medium', color: { argb: 'FF0F172A' } },
+        right: { style: 'thin', color: { argb: 'FF334155' } },
+      };
+    });
+
+    // Format Data Rows
+    (rows || []).forEach((rowData, index) => {
+      const r = sheet.addRow(rowData);
+      r.height = 22;
+      const isEven = (index + 2) % 2 === 0;
+
+      r.eachCell({ includeEmpty: true }, (cell) => {
+        cell.font = {
+          name: 'Calibri',
+          size: 10,
+          color: { argb: 'FF1E293B' },
+        };
+        cell.alignment = {
+          vertical: 'middle',
+          horizontal: 'left',
+          wrapText: false,
+        };
+        cell.fill = {
+          type: 'pattern',
+          pattern: 'solid',
+          fgColor: { argb: isEven ? 'FFF8FAFC' : 'FFFFFFFF' },
+        };
+        cell.border = {
+          top: { style: 'thin', color: { argb: 'FFE2E8F0' } },
+          left: { style: 'thin', color: { argb: 'FFE2E8F0' } },
+          bottom: { style: 'thin', color: { argb: 'FFE2E8F0' } },
+          right: { style: 'thin', color: { argb: 'FFE2E8F0' } },
+        };
+      });
+    });
+
+    // Dynamically calculate and adjust column widths
+    sheet.columns.forEach((column) => {
+      let maxLen = column.header ? column.header.toString().length : 10;
+      column.eachCell({ includeEmpty: false }, (cell) => {
+        const val = cell.value !== undefined && cell.value !== null ? cell.value.toString() : '';
+        if (val.length > maxLen) {
+          maxLen = val.length;
+        }
+      });
+      column.width = Math.min(Math.max(maxLen + 5, 14), 48);
+    });
   });
 
   return await workbook.xlsx.writeBuffer();
@@ -161,5 +324,6 @@ const parseStudentBulkImport = async (filePath, adminUserId) => {
 
 module.exports = {
   exportToExcel,
+  exportMultiSheetExcel,
   parseStudentBulkImport,
 };

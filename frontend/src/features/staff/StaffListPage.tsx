@@ -52,6 +52,25 @@ const StaffListPage: React.FC = () => {
     setTimeout(() => setToastMsg(null), 3500);
   };
 
+  const handleExportExcel = async () => {
+    try {
+      const blob = await StaffService.exportExcel({
+        departmentId: selectedDept && selectedDept !== 'all' ? selectedDept : undefined,
+      });
+      const url = window.URL.createObjectURL(new Blob([blob]));
+      const link = document.createElement('a');
+      link.href = url;
+      link.setAttribute('download', `DJMHS_Staff_Roster_${Date.now()}.xlsx`);
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(url);
+    } catch (e) {
+      setToastMsg('Failed to export staff Excel workbook.');
+      setTimeout(() => setToastMsg(null), 3500);
+    }
+  };
+
   const columns: Column<any>[] = [
     {
       header: t('employee_id'),
@@ -146,7 +165,7 @@ const StaffListPage: React.FC = () => {
         onEdit={(item) => { setEditingStaff(item); setShowFormModal(true); }}
         onDelete={(item) => setConfirmDeleteId(item.id)}
         onRowClick={(item) => navigate(`/admin/staff/${item.id}`)}
-        onExportExcel={() => { alert('Exporting Staff Roster to Excel spreadsheet (DJMHS_Staff_Roster.xlsx)...'); }}
+        onExportExcel={handleExportExcel}
         searchPlaceholder={t('search_placeholder')}
       />
 

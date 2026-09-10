@@ -906,14 +906,21 @@ const exportStudentsToExcel = async (req, res, next) => {
     const { standardId, divisionId, gender, status, search } = req.query;
     const where = { deletedAt: null };
 
-    if (status) where.status = status;
-    else where.status = 'ACTIVE';
+    if (status && status !== 'all' && status !== 'undefined' && status.trim() !== '') {
+      where.status = status;
+    }
 
-    if (gender) where.gender = gender;
-    if (divisionId) where.divisionId = divisionId;
-    else if (standardId) where.division = { standardId };
+    if (gender && gender !== 'all' && gender !== 'undefined' && gender.trim() !== '') {
+      where.gender = gender;
+    }
 
-    if (search) {
+    if (divisionId && divisionId !== 'all' && divisionId !== 'undefined' && divisionId.trim() !== '') {
+      where.divisionId = divisionId;
+    } else if (standardId && standardId !== 'all' && standardId !== 'undefined' && standardId.trim() !== '') {
+      where.division = { standardId };
+    }
+
+    if (search && search.trim() !== '') {
       where.OR = [
         { firstName: { contains: search, mode: 'insensitive' } },
         { lastName: { contains: search, mode: 'insensitive' } },
@@ -931,33 +938,37 @@ const exportStudentsToExcel = async (req, res, next) => {
     });
 
     const columns = [
-      { header: 'GR Number', key: 'grNumber', width: 18 },
-      { header: 'Student Name', key: 'name', width: 25 },
-      { header: 'Gender', key: 'gender', width: 12 },
-      { header: 'Date of Birth', key: 'dob', width: 15 },
-      { header: 'Standard', key: 'standard', width: 20 },
-      { header: 'Division', key: 'division', width: 12 },
-      { header: 'Roll No', key: 'rollNumber', width: 10 },
-      { header: 'Guardian Name', key: 'guardian', width: 25 },
-      { header: 'Guardian Phone', key: 'phone', width: 18 },
-      { header: 'Guardian Email', key: 'email', width: 25 },
-      { header: 'Status', key: 'status', width: 12 },
+      { header: 'GR Number', key: 'grNumber' },
+      { header: 'Roll No', key: 'rollNumber' },
+      { header: 'Student Name', key: 'name' },
+      { header: 'Gender', key: 'gender' },
+      { header: 'Date of Birth', key: 'dob' },
+      { header: 'Standard', key: 'standard' },
+      { header: 'Division', key: 'division' },
+      { header: 'Blood Group', key: 'bloodGroup' },
+      { header: 'Emergency Contact', key: 'emergencyContact' },
+      { header: 'Guardian Name', key: 'guardian' },
+      { header: 'Guardian Phone', key: 'phone' },
+      { header: 'Guardian Email', key: 'email' },
+      { header: 'Status', key: 'status' },
     ];
 
     const rows = students.map((s) => {
       const primaryParent = s.parents?.find((p) => p.isPrimary)?.parent || s.parents?.[0]?.parent;
       return {
-        grNumber: s.grNumber,
-        name: `${s.firstName} ${s.lastName}`,
-        gender: s.gender,
-        dob: s.dob ? new Date(s.dob).toISOString().split('T')[0] : '',
+        grNumber: s.grNumber || 'N/A',
+        rollNumber: s.rollNumber || 'N/A',
+        name: `${s.firstName || ''} ${s.lastName || ''}`.trim(),
+        gender: s.gender || 'N/A',
+        dob: s.dob ? new Date(s.dob).toISOString().split('T')[0] : 'N/A',
         standard: s.division?.standard?.name || 'N/A',
         division: s.division?.name || 'A',
-        rollNumber: s.rollNumber,
+        bloodGroup: s.bloodGroup || 'N/A',
+        emergencyContact: s.emergencyContact || 'N/A',
         guardian: primaryParent ? `${primaryParent.fatherName || primaryParent.guardianName || 'Guardian'}` : 'N/A',
         phone: primaryParent?.phone || 'N/A',
         email: primaryParent?.email || 'N/A',
-        status: s.status,
+        status: s.status || 'ACTIVE',
       };
     });
 

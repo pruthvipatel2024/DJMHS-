@@ -1,5 +1,6 @@
 const prisma = require('../config/db');
 const { sendSMS } = require('../services/communication.service');
+const { exportToExcel } = require('../services/excel.service');
 
 /**
  * Get attendance sheet for a specified division and date with cumulative student metrics
@@ -354,8 +355,82 @@ const getAttendanceReport = async (req, res, next) => {
   }
 };
 
+/**
+ * Export Monthly Attendance Matrix to Excel
+ */
+const exportAttendanceToExcel = async (req, res, next) => {
+  try {
+    const { divisionId, month, year } = req.query;
+    const targetMonth = parseInt(month, 10) || (new Date().getMonth() + 1);
+    const targetYear = parseInt(year, 10) || new Date().getFullYear();
+
+    const startDate = new Date(targetYear, targetMonth - 1, 1);
+    const endDate = new Date(targetYear, targetMonth, 0);
+
+    const students = await prisma.student.findMany({
+      where: divisionId && divisionId !== 'all' ? { divisionId, status: 'ACTIVE' } : { status: 'ACTIVE' },
+      select: {
+        id: true,
+        grNumber: true,
+        rollNumber: true,
+        firstName: true,
+        lastName: true,
+        division: { include: { standard: true } },
+      },
+      orderBy: [{ division: { name: 'asc' } }, { rollNumber: 'asc' }],
+    });
+
+    const records = await prisma.studentAttendance.findMany({
+      where: {
+        date: { gte: startDate, lte: endDate },
+      },
+    });
+
+    const columns = [
+      { header: 'GR Number', key: 'grNumber' },
+      { header: 'Roll No', key: 'rollNumber' },
+      { header: 'Student Name', key: 'studentName' },
+      { header: 'Standard & Division', key: 'cohort' },
+      { header: 'Total Working Days', key: 'totalDays' },
+      { header: 'Present Days', key: 'presentDays' },
+      { header: 'Absent Days', key: 'absentDays' },
+      { header: 'Attendance %', key: 'percentage' },
+      { header: 'Status Flag', key: 'flag' },
+    ];
+
+    const rows = students.map((std) => {
+      const stdRecords = records.filter((r) => r.studentId === std.id);
+      const totalMarkedDays = stdRecords.length;
+      const presentDays = stdRecords.filter((r) => r.status === 'PRESENT' || r.status === 'HALF_DAY').length;
+      const absentDays = totalMarkedDays - presentDays;
+      const pct = totalMarkedDays > 0 ? ((presentDays / totalMarkedDays) * 100).toFixed(1) : '100.0';
+
+      return {
+        grNumber: std.grNumber || 'N/A',
+        rollNumber: std.rollNumber || 'N/A',
+        studentName: `${std.firstName} ${std.lastName}`,
+        cohort: std.division ? `${std.division.standard?.name || ''} - Div ${std.division.name}` : 'N/A',
+        totalDays: totalMarkedDays,
+        presentDays: presentDays,
+        absentDays: absentDays,
+        percentage: `${pct}%`,
+        flag: Number(pct) < 75.0 ? 'LOW ATTENDANCE (<75%)' : 'REGULAR',
+      };
+    });
+
+    const buffer = await exportToExcel(`Attendance ${targetMonth}-${targetYear}`, columns, rows);
+
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.setHeader('Content-Disposition', `attachment; filename="DJMHS_Monthly_Attendance_${targetMonth}_${targetYear}_${Date.now()}.xlsx"`);
+    res.send(buffer);
+  } catch (err) {
+    next(err);
+  }
+};
+
 module.exports = {
   getAttendanceByDivision,
   markAttendance,
   getAttendanceReport,
+  exportAttendanceToExcel,
 };

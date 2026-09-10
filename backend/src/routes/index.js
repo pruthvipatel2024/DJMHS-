@@ -16,6 +16,7 @@ const settingsRoutes = require('./settings.routes');
 const crmRoutes = require('./crm.routes');
 const uploadRoutes = require('./upload.routes');
 const adminRoutes = require('./admin.routes');
+const notificationRoutes = require('./notification.routes');
 
 // API Root Index Endpoint
 router.get('/', (req, res) => {
@@ -37,6 +38,7 @@ router.get('/', (req, res) => {
       crm: '/api/crm',
       settings: '/api/settings',
       upload: '/api/upload',
+      notifications: '/api/notifications',
     },
   });
 });
@@ -56,6 +58,7 @@ router.use('/crm', crmRoutes);
 router.use('/reports', reportRoutes);
 router.use('/settings', settingsRoutes);
 router.use('/upload', uploadRoutes);
+router.use('/notifications', notificationRoutes);
 
 module.exports = router;
 

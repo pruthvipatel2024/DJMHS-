@@ -63,6 +63,14 @@ export const StaffService = {
     const res = await api.post('/staff/bulk-import', { records });
     return res.data;
   },
+
+  exportExcel: async (params?: StaffQueryParams): Promise<Blob> => {
+    const res = await api.get('/staff/export', {
+      params,
+      responseType: 'blob',
+    });
+    return res.data;
+  },
 };
 
 export default StaffService;

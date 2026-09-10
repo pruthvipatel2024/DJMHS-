@@ -8,6 +8,7 @@ router.use(authenticate);
 
 // Admission Inquiry routes
 router.get('/inquiries', authorizeRoles('ADMIN', 'TEACHER'), crmController.getInquiries);
+router.get('/inquiries/export', authorizeRoles('ADMIN', 'TEACHER'), crmController.exportInquiriesToExcel);
 router.post('/inquiries', authorizeRoles('ADMIN', 'TEACHER'), crmController.createInquiry);
 router.post('/inquiries/:id/convert', authorizeRoles('ADMIN'), crmController.convertInquiryToStudent);
 
