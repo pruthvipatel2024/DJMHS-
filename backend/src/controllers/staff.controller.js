@@ -94,7 +94,18 @@ const getAllStaff = async (req, res, next) => {
       include: {
         department: true,
         user: { select: { isActive: true, email: true } },
-        classTeaching: { include: { division: { include: { standard: true } } } },
+        classTeaching: {
+          include: {
+            division: { include: { standard: true } },
+            academicYear: true,
+          },
+        },
+        subjectTeaching: {
+          include: {
+            subject: { include: { standard: true } },
+            division: { include: { standard: true } },
+          },
+        },
       },
       orderBy: { empId: 'asc' },
     });
@@ -116,8 +127,18 @@ const getStaffById = async (req, res, next) => {
       include: {
         department: true,
         user: { select: { id: true, identifier: true, isActive: true, email: true, phone: true } },
-        classTeaching: { include: { division: { include: { standard: true } } } },
-        subjectTeaching: { include: { subject: true, division: { include: { standard: true } } } },
+        classTeaching: {
+          include: {
+            division: { include: { standard: true } },
+            academicYear: true,
+          },
+        },
+        subjectTeaching: {
+          include: {
+            subject: { include: { standard: true } },
+            division: { include: { standard: true } },
+          },
+        },
       },
     });
 
@@ -136,7 +157,20 @@ const getStaffById = async (req, res, next) => {
  */
 const createStaff = async (req, res, next) => {
   try {
-    const { firstName, lastName, gender, dob, designation, departmentId, phone, email, address, joinDate } = req.body;
+    const {
+      firstName,
+      lastName,
+      gender,
+      dob,
+      designation,
+      departmentId,
+      phone,
+      email,
+      address,
+      joinDate,
+      classTeacherDivisionId,
+      subjectAllocations,
+    } = req.body;
 
     const cleanFirstName = firstName ? String(firstName).trim() : '';
     const cleanLastName = lastName ? String(lastName).trim() : '';
@@ -209,91 +243,168 @@ const createStaff = async (req, res, next) => {
       staffIdentifier = empId;
     }
 
-    // Transaction to ensure relational consistency
-    const newStaff = await prisma.$transaction(async (tx) => {
-      let newUser = existingUser;
-      if (!newUser) {
-        newUser = await tx.user.create({
-          data: {
-            identifier: staffIdentifier,
-            email: cleanEmail,
-            phone: cleanPhone,
-            passwordHash: passwordHash,
-            roleId: teacherRole.id,
-            isFirstLogin: true,
-            isActive: true,
-          },
-        });
-      } else {
-        // When user already exists, update their contact & status without overwriting their existing passwordHash or isFirstLogin
-        newUser = await tx.user.update({
-          where: { id: existingUser.id },
-          data: {
-            identifier: cleanEmail || existingUser.identifier || empId,
-            email: cleanEmail || existingUser.email,
-            phone: cleanPhone || existingUser.phone,
-            roleId: teacherRole.id,
-            isActive: true,
-            deletedAt: null,
-            isLocked: false,
-            lockUntil: null,
-            failedLoginAttempts: 0,
-          },
+    // Pre-resolve active academic year if designating as Class Teacher
+    let activeYear = null;
+    if (validDesignation === 'CLASS_TEACHER' && classTeacherDivisionId && String(classTeacherDivisionId).trim()) {
+      activeYear = await prisma.academicYear.findFirst({
+        where: { isCurrent: true, deletedAt: null },
+      });
+      if (!activeYear) {
+        activeYear = await prisma.academicYear.findFirst({
+          where: { deletedAt: null },
+          orderBy: { name: 'desc' },
         });
       }
+    }
 
-      // Check if staff profile already exists
-      const existingStaffProfile = await tx.staff.findFirst({
-        where: {
-          OR: [
-            { userId: newUser.id },
-            { empId: empId },
-            ...(cleanEmail ? [{ email: cleanEmail }] : []),
-          ],
-        },
-      });
+    const validSubjectMappings = (parsedSubjectAllocations || [])
+      .filter((item) => item && item.subjectId && item.divisionId)
+      .map((item) => ({
+        subjectId: String(item.subjectId).trim(),
+        divisionId: String(item.divisionId).trim(),
+      }));
 
-      if (existingStaffProfile) {
-        return await tx.staff.update({
-          where: { id: existingStaffProfile.id },
-          data: {
-            userId: newUser.id,
-            firstName: cleanFirstName,
-            lastName: cleanLastName,
-            gender: gender || 'Other',
-            dob: new Date(dob || '1990-01-01'),
-            designation: validDesignation,
-            joinDate: joinDate ? new Date(joinDate) : new Date(),
-            departmentId: validDeptId,
-            phone: cleanPhone,
-            email: cleanEmail,
-            address: cleanAddress,
-            photoUrl: photoAsset ? photoAsset.photoUrl : (req.body.photoUrl || existingStaffProfile.photoUrl || null),
-            deletedAt: null,
+    // Transaction to ensure relational consistency with 30s timeout
+    const createdStaffId = await prisma.$transaction(
+      async (tx) => {
+        let newUser = existingUser;
+        if (!newUser) {
+          newUser = await tx.user.create({
+            data: {
+              identifier: staffIdentifier,
+              email: cleanEmail,
+              phone: cleanPhone,
+              passwordHash: passwordHash,
+              roleId: teacherRole.id,
+              isFirstLogin: true,
+              isActive: true,
+            },
+          });
+        } else {
+          newUser = await tx.user.update({
+            where: { id: existingUser.id },
+            data: {
+              identifier: cleanEmail || existingUser.identifier || empId,
+              email: cleanEmail || existingUser.email,
+              phone: cleanPhone || existingUser.phone,
+              roleId: teacherRole.id,
+              isActive: true,
+              deletedAt: null,
+              isLocked: false,
+              lockUntil: null,
+              failedLoginAttempts: 0,
+            },
+          });
+        }
+
+        // Check if staff profile already exists
+        const existingStaffProfile = await tx.staff.findFirst({
+          where: {
+            OR: [
+              { userId: newUser.id },
+              { empId: empId },
+              ...(cleanEmail ? [{ email: cleanEmail }] : []),
+            ],
           },
-          include: { department: true },
         });
-      }
 
-      return await tx.staff.create({
-        data: {
-          userId: newUser.id,
-          empId: empId,
-          firstName: cleanFirstName,
-          lastName: cleanLastName,
-          gender: gender || 'Other',
-          dob: new Date(dob || '1990-01-01'),
-          designation: validDesignation,
-          joinDate: joinDate ? new Date(joinDate) : new Date(),
-          departmentId: validDeptId,
-          phone: cleanPhone,
-          email: cleanEmail,
-          address: cleanAddress,
-          photoUrl: photoAsset ? photoAsset.photoUrl : (req.body.photoUrl || null),
+        let staffProfile;
+        if (existingStaffProfile) {
+          staffProfile = await tx.staff.update({
+            where: { id: existingStaffProfile.id },
+            data: {
+              userId: newUser.id,
+              firstName: cleanFirstName,
+              lastName: cleanLastName,
+              gender: gender || 'Other',
+              dob: new Date(dob || '1990-01-01'),
+              designation: validDesignation,
+              joinDate: joinDate ? new Date(joinDate) : new Date(),
+              departmentId: validDeptId,
+              phone: cleanPhone,
+              email: cleanEmail,
+              address: cleanAddress,
+              photoUrl: photoAsset ? photoAsset.photoUrl : (req.body.photoUrl || existingStaffProfile.photoUrl || null),
+              deletedAt: null,
+            },
+          });
+        } else {
+          staffProfile = await tx.staff.create({
+            data: {
+              userId: newUser.id,
+              empId: empId,
+              firstName: cleanFirstName,
+              lastName: cleanLastName,
+              gender: gender || 'Other',
+              dob: new Date(dob || '1990-01-01'),
+              designation: validDesignation,
+              joinDate: joinDate ? new Date(joinDate) : new Date(),
+              departmentId: validDeptId,
+              phone: cleanPhone,
+              email: cleanEmail,
+              address: cleanAddress,
+              photoUrl: photoAsset ? photoAsset.photoUrl : (req.body.photoUrl || null),
+            },
+          });
+        }
+
+        // Class Teacher Assignment
+        if (validDesignation === 'CLASS_TEACHER' && classTeacherDivisionId && activeYear) {
+          const cleanDivId = String(classTeacherDivisionId).trim();
+          await tx.classTeacherMapping.deleteMany({
+            where: {
+              OR: [
+                { staffId: staffProfile.id },
+                { divisionId: cleanDivId, academicYearId: activeYear.id, isCoTeacher: false },
+              ],
+            },
+          });
+
+          await tx.classTeacherMapping.create({
+            data: {
+              staffId: staffProfile.id,
+              divisionId: cleanDivId,
+              academicYearId: activeYear.id,
+              isCoTeacher: false,
+            },
+          });
+        }
+
+        // Subject Teaching Allocations via batch createMany
+        if (validSubjectMappings.length > 0) {
+          await tx.staffSubjectMapping.deleteMany({
+            where: { staffId: staffProfile.id },
+          });
+
+          await tx.staffSubjectMapping.createMany({
+            data: validSubjectMappings.map((item) => ({
+              staffId: staffProfile.id,
+              subjectId: item.subjectId,
+              divisionId: item.divisionId,
+            })),
+            skipDuplicates: true,
+          });
+        }
+
+        return staffProfile.id;
+      },
+      { maxWait: 15000, timeout: 30000 }
+    );
+
+    const newStaff = await prisma.staff.findUnique({
+      where: { id: createdStaffId },
+      include: {
+        department: true,
+        classTeaching: {
+          include: { division: { include: { standard: true } }, academicYear: true },
         },
-        include: { department: true },
-      });
+        subjectTeaching: {
+          include: { subject: { include: { standard: true } }, division: { include: { standard: true } } },
+        },
+      },
     });
+
+    if (typeof clearDashboardCache === 'function') clearDashboardCache();
 
     // Non-blocking notification dispatch with HTML email template
     if (cleanPhone) {
@@ -347,6 +458,8 @@ const updateStaff = async (req, res, next) => {
       joinDate,
       employmentType,
       photoUrl,
+      classTeacherDivisionId,
+      subjectAllocations,
     } = req.body;
 
     const staffRecord = await prisma.staff.findUnique({ where: { id } });
@@ -373,7 +486,12 @@ const updateStaff = async (req, res, next) => {
 
     if (gender) updateData.gender = gender;
     if (dob) updateData.dob = new Date(dob);
-    if (designation) updateData.designation = mapDesignation(designation);
+    
+    let targetDesignation = staffRecord.designation;
+    if (designation) {
+      targetDesignation = mapDesignation(designation);
+      updateData.designation = targetDesignation;
+    }
 
     if (phone) {
       const cleanPhone = String(phone).replace(/\D/g, '');
@@ -410,26 +528,124 @@ const updateStaff = async (req, res, next) => {
       }
     }
 
-    const updated = await prisma.$transaction(async (tx) => {
-      const updatedStaff = await tx.staff.update({
-        where: { id },
-        data: updateData,
-        include: { department: true },
-      });
-
-      // Keep user login credentials & phone in sync
-      if (staffRecord.userId && (updateData.email || updateData.phone)) {
-        await tx.user.update({
-          where: { id: staffRecord.userId },
-          data: {
-            ...(updateData.email ? { email: updateData.email, identifier: updateData.email } : {}),
-            ...(updateData.phone ? { phone: updateData.phone } : {}),
-          },
-        }).catch(() => {});
+    // Parse subject allocations if provided
+    let parsedSubjectAllocations = undefined;
+    if (subjectAllocations !== undefined) {
+      if (typeof subjectAllocations === 'string') {
+        try {
+          parsedSubjectAllocations = JSON.parse(subjectAllocations);
+        } catch (e) {
+          parsedSubjectAllocations = [];
+        }
+      } else if (Array.isArray(subjectAllocations)) {
+        parsedSubjectAllocations = subjectAllocations;
       }
+    }
 
-      return updatedStaff;
+    // Pre-resolve active academic year if designating as Class Teacher
+    let activeYear = null;
+    if (targetDesignation === 'CLASS_TEACHER' && classTeacherDivisionId && String(classTeacherDivisionId).trim()) {
+      activeYear = await prisma.academicYear.findFirst({
+        where: { isCurrent: true, deletedAt: null },
+      });
+      if (!activeYear) {
+        activeYear = await prisma.academicYear.findFirst({
+          where: { deletedAt: null },
+          orderBy: { name: 'desc' },
+        });
+      }
+    }
+
+    const validSubjectMappings = parsedSubjectAllocations !== undefined
+      ? parsedSubjectAllocations
+          .filter((item) => item && item.subjectId && item.divisionId)
+          .map((item) => ({
+            subjectId: String(item.subjectId).trim(),
+            divisionId: String(item.divisionId).trim(),
+          }))
+      : undefined;
+
+    await prisma.$transaction(
+      async (tx) => {
+        await tx.staff.update({
+          where: { id },
+          data: updateData,
+        });
+
+        // Keep user login credentials & phone in sync
+        if (staffRecord.userId && (updateData.email || updateData.phone)) {
+          await tx.user.update({
+            where: { id: staffRecord.userId },
+            data: {
+              ...(updateData.email ? { email: updateData.email, identifier: updateData.email } : {}),
+              ...(updateData.phone ? { phone: updateData.phone } : {}),
+            },
+          }).catch(() => {});
+        }
+
+        // Handle Class Teacher Assignment
+        if (targetDesignation === 'CLASS_TEACHER') {
+          if (classTeacherDivisionId && String(classTeacherDivisionId).trim() && activeYear) {
+            const cleanDivId = String(classTeacherDivisionId).trim();
+            // Remove previous mapping for this staff member or primary mapping for this division in this year
+            await tx.classTeacherMapping.deleteMany({
+              where: {
+                OR: [
+                  { staffId: id },
+                  { divisionId: cleanDivId, academicYearId: activeYear.id, isCoTeacher: false },
+                ],
+              },
+            });
+
+            await tx.classTeacherMapping.create({
+              data: {
+                staffId: id,
+                divisionId: cleanDivId,
+                academicYearId: activeYear.id,
+                isCoTeacher: false,
+              },
+            });
+          } else if (classTeacherDivisionId === '' || classTeacherDivisionId === null) {
+            await tx.classTeacherMapping.deleteMany({ where: { staffId: id } });
+          }
+        } else {
+          // If designation is not CLASS_TEACHER, clear any class teacher mapping
+          await tx.classTeacherMapping.deleteMany({ where: { staffId: id } });
+        }
+
+        // Handle Subject Teaching Allocations if passed
+        if (validSubjectMappings !== undefined) {
+          await tx.staffSubjectMapping.deleteMany({ where: { staffId: id } });
+
+          if (validSubjectMappings.length > 0) {
+            await tx.staffSubjectMapping.createMany({
+              data: validSubjectMappings.map((item) => ({
+                staffId: id,
+                subjectId: item.subjectId,
+                divisionId: item.divisionId,
+              })),
+              skipDuplicates: true,
+            });
+          }
+        }
+      },
+      { maxWait: 15000, timeout: 30000 }
+    );
+
+    const updated = await prisma.staff.findUnique({
+      where: { id },
+      include: {
+        department: true,
+        classTeaching: {
+          include: { division: { include: { standard: true } }, academicYear: true },
+        },
+        subjectTeaching: {
+          include: { subject: { include: { standard: true } }, division: { include: { standard: true } } },
+        },
+      },
     });
+
+    if (typeof clearDashboardCache === 'function') clearDashboardCache();
 
     res.status(200).json({ success: true, message: 'Staff personnel profile updated successfully.', data: updated });
   } catch (err) {

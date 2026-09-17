@@ -105,8 +105,45 @@ const StaffListPage: React.FC = () => {
     },
     {
       header: t('designation'),
-      accessor: 'designation',
+      accessor: (row) => {
+        const isClassTeacher = row.designation === 'CLASS_TEACHER';
+        const ctMapping = row.classTeaching?.[0] || row.classTeacherOf?.[0];
+        const subMappings = row.subjectTeaching || row.subjectTeachings || [];
+
+        return (
+          <div className="space-y-1">
+            <div className="flex items-center gap-1.5 flex-wrap">
+              <span
+                className={`px-2 py-0.5 rounded-md font-bold text-xs border ${
+                  isClassTeacher
+                    ? 'bg-purple-50 text-purple-700 border-purple-200'
+                    : row.designation === 'HOD'
+                    ? 'bg-amber-50 text-amber-800 border-amber-200'
+                    : 'bg-blue-50 text-blue-700 border-blue-200'
+                }`}
+              >
+                {row.designation ? row.designation.replace(/_/g, ' ') : 'TEACHER'}
+              </span>
+              {isClassTeacher && ctMapping?.division && (
+                <span className="px-2 py-0.5 rounded-md bg-purple-600 text-white font-extrabold text-[10px] shadow-2xs">
+                  {ctMapping.division.standard?.name || 'Std'} - Div {ctMapping.division.name}
+                </span>
+              )}
+            </div>
+            {subMappings.length > 0 && (
+              <div className="text-[11px] text-slate-500 font-medium flex items-center gap-1">
+                <span className="font-bold text-primary-700">{subMappings.length} Subject{subMappings.length > 1 ? 's' : ''}:</span>
+                <span className="truncate max-w-[200px]">
+                  {Array.from(new Set(subMappings.map((s: any) => s.subject?.name || s.subjectName || 'Subject'))).slice(0, 2).join(', ')}
+                  {Array.from(new Set(subMappings.map((s: any) => s.subject?.name || s.subjectName || 'Subject'))).length > 2 ? '...' : ''}
+                </span>
+              </div>
+            )}
+          </div>
+        );
+      },
       sortable: true,
+      sortKey: 'designation',
     },
     {
       header: t('contact_number'),

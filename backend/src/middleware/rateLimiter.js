@@ -6,6 +6,7 @@ const apiLimiter = rateLimit({
   max: 300, // Limit each IP to 300 requests per window
   standardHeaders: true,
   legacyHeaders: false,
+  validate: { trustProxy: false },
   message: {
     success: false,
     error: 'Too Many Requests',
@@ -19,6 +20,7 @@ const authLimiter = rateLimit({
   max: 15, // Max 15 login requests per IP before transport level throttling
   standardHeaders: true,
   legacyHeaders: false,
+  validate: { trustProxy: false },
   message: {
     success: false,
     error: 'Rate Limit Exceeded',

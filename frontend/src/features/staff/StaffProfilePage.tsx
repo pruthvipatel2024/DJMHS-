@@ -109,7 +109,7 @@ const StaffProfilePage: React.FC = () => {
           onClick={() => setActiveTab('teaching')}
           className={`px-6 py-3 font-extrabold text-xs border-b-2 transition -mb-px ${activeTab === 'teaching' ? 'border-primary-600 text-primary-600' : 'border-transparent text-slate-500 hover:text-slate-800'}`}
         >
-          Teaching & Homeroom Schedule ({staff?.subjectTeachings?.length || 1})
+          Teaching & Homeroom Schedule ({((staff?.subjectTeaching || staff?.subjectTeachings) || []).length})
         </button>
         <button
           onClick={() => setActiveTab('qualifications')}
@@ -147,11 +147,11 @@ const StaffProfilePage: React.FC = () => {
               <h4 className="text-sm font-black text-slate-800 mb-3 flex items-center gap-2">
                 <Users className="w-4 h-4 text-primary-600" /> Class Teacher Homeroom Assignment
               </h4>
-              {staff?.classTeacherOf && staff.classTeacherOf.length > 0 ? (
-                staff.classTeacherOf.map((c: any, idx: number) => (
+              {((staff?.classTeaching || staff?.classTeacherOf) && (staff?.classTeaching || staff?.classTeacherOf).length > 0) ? (
+                (staff?.classTeaching || staff?.classTeacherOf).map((c: any, idx: number) => (
                   <div key={idx} className="p-4 rounded-xl bg-primary-50/50 border border-primary-200 text-xs flex justify-between items-center font-bold">
                     <span>{c.division?.standard?.name || 'Standard'} — Division {c.division?.name || 'A'}</span>
-                    <span className="text-primary-700">{c.division?.roomNumber || 'Room Unassigned'}</span>
+                    <span className="text-primary-700">{c.division?.roomNumber ? `Room ${c.division.roomNumber}` : 'Room Unassigned'}</span>
                   </div>
                 ))
               ) : (
@@ -163,11 +163,11 @@ const StaffProfilePage: React.FC = () => {
 
             <div>
               <h4 className="text-sm font-black text-slate-800 mb-3 flex items-center gap-2">
-                <BookOpen className="w-4 h-4 text-primary-600" /> Subject Teaching Responsibilities
+                <BookOpen className="w-4 h-4 text-primary-600" /> Subject Teaching Responsibilities ({((staff?.subjectTeaching || staff?.subjectTeachings) || []).length})
               </h4>
-              {staff?.subjectTeachings && staff.subjectTeachings.length > 0 ? (
+              {((staff?.subjectTeaching || staff?.subjectTeachings) && (staff?.subjectTeaching || staff?.subjectTeachings).length > 0) ? (
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  {staff.subjectTeachings.map((st: any, i: number) => (
+                  {(staff?.subjectTeaching || staff?.subjectTeachings).map((st: any, i: number) => (
                     <div key={i} className="p-4 rounded-xl border border-slate-200 bg-slate-50 text-xs flex justify-between items-center">
                       <div>
                         <div className="font-extrabold text-slate-800">{st.subject?.name || 'Subject'}</div>

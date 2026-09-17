@@ -12,7 +12,7 @@ const { apiLimiter } = require("./middleware/rateLimiter");
 const apiRoutes = require("./routes");
 
 const app = express();
-app.set("trust proxy", true);
+app.set("trust proxy", 1);
 
 // Security HTTP Headers
 app.use(
