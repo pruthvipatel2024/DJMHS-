@@ -417,8 +417,16 @@ const getPortalDashboard = async (req, res, next) => {
   }
 };
 
+const clearDashboardCache = () => {
+  dashboardCache.admin.data = null;
+  dashboardCache.admin.expiresAt = 0;
+  dashboardCache.teacher.clear();
+  dashboardCache.portal.clear();
+};
+
 module.exports = {
   getAdminDashboardKPIs,
   getTeacherDashboard,
   getPortalDashboard,
+  clearDashboardCache,
 };

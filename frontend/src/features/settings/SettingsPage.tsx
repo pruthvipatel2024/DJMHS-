@@ -55,26 +55,35 @@ const SettingsPage: React.FC = () => {
 
   // General tab states
   const [newDeptName, setNewDeptName] = useState('');
-  const [newStdName, setNewStdName] = useState('');
-  const [newStdLevel, setNewStdLevel] = useState('11');
 
   // Edit states for Departments
   const [editingDeptId, setEditingDeptId] = useState<string | null>(null);
   const [editDeptName, setEditDeptName] = useState('');
   const [editDeptDesc, setEditDeptDesc] = useState('');
 
-  // Edit states for Standards
-  const [editingStdId, setEditingStdId] = useState<string | null>(null);
-  const [editStdName, setEditStdName] = useState('');
+  // ================= STANDARD MANAGEMENT STATES =================
+  const [isAddStdModalOpen, setIsAddStdModalOpen] = useState(false);
+  const [newStdName, setNewStdName] = useState('');
+  const [newStdLevel, setNewStdLevel] = useState('11');
+  const [newStdCapacity, setNewStdCapacity] = useState('80');
 
-  // Add & Edit states for Divisions
-  const [addingDivStdId, setAddingDivStdId] = useState<string | null>(null);
+  const [editingStandard, setEditingStandard] = useState<any | null>(null);
+  const [editStdName, setEditStdName] = useState('');
+  const [editStdLevel, setEditStdLevel] = useState('11');
+  const [editStdCapacity, setEditStdCapacity] = useState('80');
+
+  // ================= DIVISION / CLASS MANAGEMENT STATES =================
+  const [isAddDivModalOpen, setIsAddDivModalOpen] = useState(false);
+  const [addDivStdId, setAddDivStdId] = useState<string>('');
   const [newDivName, setNewDivName] = useState('');
   const [newDivRoom, setNewDivRoom] = useState('');
+  const [newDivCapacity, setNewDivCapacity] = useState('40');
 
-  const [editingDivId, setEditingDivId] = useState<string | null>(null);
+  const [editingDivision, setEditingDivision] = useState<any | null>(null);
   const [editDivName, setEditDivName] = useState('');
   const [editDivRoom, setEditDivRoom] = useState('');
+  const [editDivCapacity, setEditDivCapacity] = useState('40');
+  const [editDivStdId, setEditDivStdId] = useState('');
 
   // ================= SUBJECT MANAGEMENT STATES =================
   const [subjectFilterStdId, setSubjectFilterStdId] = useState<string>('ALL');
@@ -220,7 +229,7 @@ const SettingsPage: React.FC = () => {
     return map;
   }, [allocations]);
 
-  // ================= HANDLERS FOR DEPARTMENTS & STANDARDS =================
+  // ================= HANDLERS FOR DEPARTMENTS =================
   const handleCreateDept = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newDeptName.trim()) return;
@@ -263,88 +272,155 @@ const SettingsPage: React.FC = () => {
     }
   };
 
+  // ================= HANDLERS FOR STANDARDS =================
+  const handleOpenAddStd = () => {
+    setNewStdName('');
+    setNewStdLevel('11');
+    setNewStdCapacity('80');
+    setIsAddStdModalOpen(true);
+  };
+
   const handleCreateStd = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newStdName.trim()) return;
     setErrorMsg(null);
     try {
-      await api.post('/settings/standard', { name: newStdName.trim(), level: parseInt(newStdLevel, 10) || 11, capacity: 60 });
+      await api.post('/settings/standard', {
+        name: newStdName.trim(),
+        level: parseInt(newStdLevel, 10) || 11,
+        capacity: parseInt(newStdCapacity, 10) || 80,
+      });
+      setIsAddStdModalOpen(false);
       setNewStdName('');
-      setSuccessMsg('Standard grade tier added to PostgreSQL database successfully!');
+      setSuccessMsg('Standard grade tier established in PostgreSQL database successfully!');
       fetchSettings();
-      setTimeout(() => setSuccessMsg(null), 3000);
+      setTimeout(() => setSuccessMsg(null), 3500);
     } catch (e: any) {
       setErrorMsg(e.response?.data?.message || 'Failed to create standard tier.');
     }
   };
 
-  const handleUpdateStd = async (id: string) => {
-    if (!editStdName.trim()) return;
+  const handleOpenEditStd = (std: any) => {
+    setEditingStandard(std);
+    setEditStdName(std.name);
+    setEditStdLevel(String(std.level || '11'));
+    setEditStdCapacity(String(std.capacity || '80'));
+  };
+
+  const handleUpdateStd = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingStandard || !editStdName.trim()) return;
     setErrorMsg(null);
     try {
-      await api.put(`/settings/standard/${id}`, { name: editStdName.trim() });
-      setEditingStdId(null);
-      setSuccessMsg('Standard grade tier updated successfully!');
+      await api.put(`/settings/standard/${editingStandard.id}`, {
+        name: editStdName.trim(),
+        level: parseInt(editStdLevel, 10) || 11,
+        capacity: parseInt(editStdCapacity, 10) || 80,
+      });
+      setEditingStandard(null);
+      setSuccessMsg('Standard grade tier updated successfully in database!');
       fetchSettings();
-      setTimeout(() => setSuccessMsg(null), 3000);
+      setTimeout(() => setSuccessMsg(null), 3500);
     } catch (e: any) {
       setErrorMsg(e.response?.data?.message || 'Failed to update standard tier.');
     }
   };
 
-  const handleDeleteStd = async (id: string) => {
-    if (!window.confirm('Are you sure you want to remove this standard grade tier and all associated subjects?')) return;
+  const handleDeleteStd = async (std: any) => {
+    const divCount = std.divisions?.length || 0;
+    const confirmMsg = divCount > 0
+      ? `Are you sure you want to remove Standard '${std.name}' and all its ${divCount} division(s) and subjects from the database?`
+      : `Are you sure you want to remove Standard '${std.name}' from the database?`;
+
+    if (!window.confirm(confirmMsg)) return;
     setErrorMsg(null);
     try {
-      await api.delete(`/settings/standard/${id}`);
-      setSuccessMsg('Standard removed successfully!');
+      const res = await api.delete(`/settings/standard/${std.id}`);
+      setSuccessMsg(res.data?.message || 'Standard removed successfully!');
       fetchSettings();
-      setTimeout(() => setSuccessMsg(null), 3000);
+      setTimeout(() => setSuccessMsg(null), 3500);
     } catch (e: any) {
       setErrorMsg(e.response?.data?.message || 'Failed to delete standard tier.');
+      setTimeout(() => setErrorMsg(null), 6000);
     }
   };
 
-  const handleCreateDiv = async (standardId: string) => {
-    if (!newDivName.trim()) return;
+  // ================= HANDLERS FOR DIVISIONS / CLASSES =================
+  const handleOpenAddDiv = (stdId?: string) => {
+    setAddDivStdId(stdId || (data.standards?.[0]?.id || ''));
+    setNewDivName('');
+    setNewDivRoom('');
+    setNewDivCapacity('40');
+    setIsAddDivModalOpen(true);
+  };
+
+  const handleCreateDiv = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newDivName.trim() || !addDivStdId) return;
     setErrorMsg(null);
     try {
-      await api.post('/settings/division', { standardId, name: newDivName.trim(), roomNumber: newDivRoom.trim() || 'Room 101' });
-      setAddingDivStdId(null);
+      await api.post('/settings/division', {
+        standardId: addDivStdId,
+        name: newDivName.trim().toUpperCase(),
+        roomNumber: newDivRoom.trim() || null,
+        capacity: parseInt(newDivCapacity, 10) || 40,
+      });
+      setIsAddDivModalOpen(false);
       setNewDivName('');
       setNewDivRoom('');
-      setSuccessMsg('Division added successfully!');
+      setSuccessMsg('Division section assigned and saved to database successfully!');
       fetchSettings();
-      setTimeout(() => setSuccessMsg(null), 3000);
+      setTimeout(() => setSuccessMsg(null), 3500);
     } catch (e: any) {
       setErrorMsg(e.response?.data?.message || 'Failed to add division.');
     }
   };
 
-  const handleUpdateDiv = async (id: string) => {
-    if (!editDivName.trim()) return;
+  const handleOpenEditDiv = (div: any, stdId?: string) => {
+    setEditingDivision(div);
+    setEditDivName(div.name);
+    setEditDivRoom(div.roomNumber || '');
+    setEditDivCapacity(String(div.capacity || '40'));
+    setEditDivStdId(div.standardId || stdId || '');
+  };
+
+  const handleUpdateDiv = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingDivision || !editDivName.trim()) return;
     setErrorMsg(null);
     try {
-      await api.put(`/settings/division/${id}`, { name: editDivName.trim(), roomNumber: editDivRoom.trim() });
-      setEditingDivId(null);
-      setSuccessMsg('Division updated successfully!');
+      await api.put(`/settings/division/${editingDivision.id}`, {
+        name: editDivName.trim().toUpperCase(),
+        roomNumber: editDivRoom.trim() || null,
+        capacity: parseInt(editDivCapacity, 10) || 40,
+        standardId: editDivStdId || undefined,
+      });
+      setEditingDivision(null);
+      setSuccessMsg('Division section details updated successfully in database!');
       fetchSettings();
-      setTimeout(() => setSuccessMsg(null), 3000);
+      setTimeout(() => setSuccessMsg(null), 3500);
     } catch (e: any) {
       setErrorMsg(e.response?.data?.message || 'Failed to update division.');
     }
   };
 
-  const handleDeleteDiv = async (id: string) => {
-    if (!window.confirm('Are you sure you want to remove this division section?')) return;
+  const handleDeleteDiv = async (div: any) => {
+    const studentCount = div.students?.length || div._count?.students || 0;
+    if (studentCount > 0) {
+      alert(`Cannot delete Division '${div.name}' because it currently has ${studentCount} active enrolled student(s). Please transfer students first.`);
+      return;
+    }
+
+    if (!window.confirm(`Are you sure you want to remove Division '${div.name}' from the database?`)) return;
     setErrorMsg(null);
     try {
-      await api.delete(`/settings/division/${id}`);
-      setSuccessMsg('Division removed successfully!');
+      const res = await api.delete(`/settings/division/${div.id}`);
+      setSuccessMsg(res.data?.message || 'Division removed successfully!');
       fetchSettings();
-      setTimeout(() => setSuccessMsg(null), 3000);
+      setTimeout(() => setSuccessMsg(null), 3500);
     } catch (e: any) {
       setErrorMsg(e.response?.data?.message || 'Failed to delete division.');
+      setTimeout(() => setErrorMsg(null), 6000);
     }
   };
 
@@ -762,127 +838,154 @@ const SettingsPage: React.FC = () => {
         {activeTab === 'standards' && (
           <div className="space-y-6">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-slate-100">
-              <h3 className="text-base font-bold text-slate-800">{t('standards_divisions_title')}</h3>
-              <form onSubmit={handleCreateStd} className="flex gap-2">
-                <input
-                  type="text"
-                  value={newStdName}
-                  onChange={(e) => setNewStdName(e.target.value)}
-                  placeholder="e.g. Standard 11 Commerce"
-                  className="px-3.5 py-2 border border-slate-300 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-primary-500"
-                />
-                <select value={newStdLevel} onChange={(e) => setNewStdLevel(e.target.value)} className="p-2 border border-slate-300 rounded-xl text-xs bg-white">
-                  <option value="9">Level 9</option>
-                  <option value="10">Level 10</option>
-                  <option value="11">Level 11</option>
-                  <option value="12">Level 12</option>
-                </select>
-                <button type="submit" className="px-4 py-2 bg-primary-600 hover:bg-primary-700 text-white rounded-xl text-xs font-bold transition flex items-center gap-1">
-                  <Plus className="w-3.5 h-3.5" /> {t('add_std_btn')}
-                </button>
-              </form>
+              <div>
+                <h3 className="text-base font-extrabold text-slate-900 flex items-center gap-2">
+                  <Layers className="w-5 h-5 text-primary-600" />
+                  {t('standards_divisions_title')}
+                </h3>
+                <p className="text-xs text-slate-500 mt-0.5">
+                  Manage institutional academic standards, grade tiers, division sections, and classroom capacities.
+                </p>
+              </div>
+
+              <button
+                type="button"
+                onClick={handleOpenAddStd}
+                className="px-4 py-2.5 rounded-xl bg-primary-600 hover:bg-primary-700 text-white font-bold text-xs transition flex items-center gap-1.5 shadow-md shadow-primary-600/20"
+              >
+                <Plus className="w-4 h-4" /> {t('add_std_btn')}
+              </button>
             </div>
 
-            <div className="space-y-4">
-              {data.standards?.map((s: any) => (
-                <div key={s.id} className="p-4 rounded-xl border border-slate-200 bg-slate-50 space-y-3">
-                  <div className="flex items-center justify-between">
-                    {editingStdId === s.id ? (
-                      <div className="flex items-center gap-2">
-                        <input
-                          type="text"
-                          value={editStdName}
-                          onChange={(e) => setEditStdName(e.target.value)}
-                          className="px-2.5 py-1 border border-slate-300 rounded-lg text-xs font-bold"
-                        />
-                        <button onClick={() => handleUpdateStd(s.id)} className="px-3 py-1 bg-primary-600 text-white rounded-lg text-xs font-bold">Save</button>
-                        <button onClick={() => setEditingStdId(null)} className="px-2.5 py-1 bg-slate-200 text-slate-700 rounded-lg text-xs font-bold">Cancel</button>
-                      </div>
-                    ) : (
-                      <div className="flex items-center gap-3">
-                        <h4 className="font-extrabold text-slate-800 text-sm">{s.name} (Level {s.level})</h4>
-                        <span className="px-2 py-0.5 rounded bg-primary-100 text-primary-800 text-[10px] font-extrabold">
-                          {s.subjects?.length || 0} Subjects
-                        </span>
-                        <button onClick={() => { setEditingStdId(s.id); setEditStdName(s.name); }} className="text-slate-400 hover:text-primary-600 transition">
-                          <Edit2 className="w-3.5 h-3.5" />
-                        </button>
-                        <button onClick={() => handleDeleteStd(s.id)} className="text-slate-400 hover:text-red-600 transition">
-                          <Trash2 className="w-3.5 h-3.5" />
-                        </button>
-                      </div>
-                    )}
-                    <span className="text-xs font-semibold text-slate-400">{s.divisions?.length || 0} Divisions Active</span>
-                  </div>
+            {data.standards?.length === 0 ? (
+              <div className="p-8 text-center bg-slate-50 rounded-2xl border border-dashed border-slate-200">
+                <Layers className="w-8 h-8 text-slate-300 mx-auto mb-2" />
+                <h4 className="text-sm font-bold text-slate-700">No standard grade tiers configured</h4>
+                <p className="text-xs text-slate-400 mt-1">Add a new standard tier to establish classroom divisions and curricula.</p>
+              </div>
+            ) : (
+              <div className="space-y-4">
+                {data.standards?.map((s: any) => {
+                  const studentCount = s.divisions?.reduce((acc: number, d: any) => acc + (d.students?.length || d._count?.students || 0), 0) || 0;
+                  return (
+                    <div
+                      key={s.id}
+                      className="p-5 rounded-2xl border border-slate-200 bg-slate-50/70 hover:border-slate-300 transition space-y-4"
+                    >
+                      {/* Standard Header */}
+                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-slate-200/80">
+                        <div className="flex flex-wrap items-center gap-2.5">
+                          <h4 className="font-extrabold text-slate-900 text-base flex items-center gap-2">
+                            <span className="w-2.5 h-2.5 rounded-full bg-primary-600 inline-block"></span>
+                            {s.name}
+                          </h4>
+                          <span className="px-2.5 py-0.5 rounded-md bg-primary-100 text-primary-800 text-[11px] font-bold">
+                            GSEB Level {s.level}
+                          </span>
+                          <span className="px-2.5 py-0.5 rounded-md bg-slate-200/70 text-slate-700 text-[11px] font-semibold">
+                            Max Cap: {s.capacity || 80}
+                          </span>
+                          <span className="px-2.5 py-0.5 rounded-md bg-indigo-50 border border-indigo-200 text-indigo-800 text-[11px] font-bold">
+                            {s.subjects?.length || 0} Subjects
+                          </span>
+                          <span className="px-2.5 py-0.5 rounded-md bg-emerald-50 border border-emerald-200 text-emerald-800 text-[11px] font-bold">
+                            {studentCount} Enrolled Students
+                          </span>
+                        </div>
 
-                  {/* Divisions list */}
-                  <div className="flex flex-wrap gap-2 pt-1">
-                    {s.divisions?.map((div: any) => (
-                      <div key={div.id} className="px-3 py-1.5 rounded-lg bg-white border border-slate-200 text-xs font-bold text-slate-700 shadow-xs flex items-center gap-2">
-                        {editingDivId === div.id ? (
-                          <div className="flex items-center gap-1">
-                            <input
-                              type="text"
-                              value={editDivName}
-                              onChange={(e) => setEditDivName(e.target.value)}
-                              className="w-10 p-1 border rounded text-xs font-bold"
-                              placeholder="Name"
-                            />
-                            <input
-                              type="text"
-                              value={editDivRoom}
-                              onChange={(e) => setEditDivRoom(e.target.value)}
-                              className="w-20 p-1 border rounded text-xs"
-                              placeholder="Room"
-                            />
-                            <button onClick={() => handleUpdateDiv(div.id)} className="p-1 bg-primary-600 text-white rounded"><Save className="w-3 h-3" /></button>
-                            <button onClick={() => setEditingDivId(null)} className="p-1 bg-slate-200 text-slate-700 rounded"><X className="w-3 h-3" /></button>
-                          </div>
-                        ) : (
-                          <>
-                            <span>Div {div.name} ({div.roomNumber || 'Room N/A'})</span>
-                            <button onClick={() => { setEditingDivId(div.id); setEditDivName(div.name); setEditDivRoom(div.roomNumber || ''); }} className="text-slate-400 hover:text-primary-600">
-                              <Edit2 className="w-3 h-3" />
-                            </button>
-                            <button onClick={() => handleDeleteDiv(div.id)} className="text-slate-400 hover:text-red-600">
-                              <Trash2 className="w-3 h-3" />
-                            </button>
-                          </>
-                        )}
+                        <div className="flex items-center gap-2">
+                          <button
+                            type="button"
+                            onClick={() => handleOpenEditStd(s)}
+                            className="px-3 py-1.5 rounded-lg bg-white border border-slate-300 hover:bg-slate-100 text-slate-700 text-xs font-bold flex items-center gap-1.5 transition shadow-2xs"
+                            title="Edit Standard Tier"
+                          >
+                            <Edit2 className="w-3.5 h-3.5 text-primary-600" />
+                            Edit Standard
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleDeleteStd(s)}
+                            className="px-3 py-1.5 rounded-lg bg-red-50 border border-red-200 hover:bg-red-100 text-red-700 text-xs font-bold flex items-center gap-1.5 transition shadow-2xs"
+                            title="Delete Standard Tier"
+                          >
+                            <Trash2 className="w-3.5 h-3.5 text-red-500" />
+                            Delete
+                          </button>
+                        </div>
                       </div>
-                    ))}
 
-                    {addingDivStdId === s.id ? (
-                      <div className="flex items-center gap-1.5 p-1 bg-white border border-primary-300 rounded-lg">
-                        <input
-                          type="text"
-                          value={newDivName}
-                          onChange={(e) => setNewDivName(e.target.value)}
-                          placeholder="Div Name (e.g. A)"
-                          className="w-24 px-2 py-1 border border-slate-300 rounded text-xs"
-                        />
-                        <input
-                          type="text"
-                          value={newDivRoom}
-                          onChange={(e) => setNewDivRoom(e.target.value)}
-                          placeholder="Room 101"
-                          className="w-24 px-2 py-1 border border-slate-300 rounded text-xs"
-                        />
-                        <button onClick={() => handleCreateDiv(s.id)} className="px-2.5 py-1 bg-primary-600 text-white rounded text-xs font-bold">Add</button>
-                        <button onClick={() => setAddingDivStdId(null)} className="px-2.5 py-1 bg-slate-200 text-slate-700 rounded text-xs font-bold">Cancel</button>
+                      {/* Division Class Sections */}
+                      <div className="space-y-2">
+                        <div className="flex items-center justify-between">
+                          <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">
+                            Class Divisions ({s.divisions?.length || 0})
+                          </span>
+                        </div>
+
+                        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
+                          {s.divisions?.map((div: any) => {
+                            const divStudents = div.students?.length || div._count?.students || 0;
+                            return (
+                              <div
+                                key={div.id}
+                                className="p-3.5 rounded-xl bg-white border border-slate-200 shadow-2xs flex flex-col justify-between gap-2.5 hover:border-primary-300 hover:shadow-xs transition"
+                              >
+                                <div className="space-y-1">
+                                  <div className="flex items-start justify-between gap-1.5">
+                                    <span className="px-2 py-0.5 rounded bg-primary-50 text-primary-900 font-extrabold text-xs border border-primary-200">
+                                      Div {div.name}
+                                    </span>
+                                    <span className="text-[10px] font-bold text-slate-400">
+                                      Cap: {div.capacity || 40}
+                                    </span>
+                                  </div>
+                                  <p className="text-xs font-semibold text-slate-700">
+                                    {div.roomNumber || 'Room N/A'}
+                                  </p>
+                                  <p className="text-[11px] text-slate-500 font-medium">
+                                    {divStudents} Active Student{divStudents === 1 ? '' : 's'}
+                                  </p>
+                                </div>
+
+                                <div className="flex items-center justify-end gap-1.5 pt-2 border-t border-slate-100">
+                                  <button
+                                    type="button"
+                                    onClick={() => handleOpenEditDiv(div, s.id)}
+                                    className="p-1.5 rounded-md hover:bg-primary-50 text-slate-500 hover:text-primary-700 transition"
+                                    title="Edit Division Section"
+                                  >
+                                    <Edit2 className="w-3.5 h-3.5" />
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => handleDeleteDiv(div)}
+                                    className="p-1.5 rounded-md hover:bg-red-50 text-slate-400 hover:text-red-600 transition"
+                                    title="Remove Division"
+                                  >
+                                    <Trash2 className="w-3.5 h-3.5" />
+                                  </button>
+                                </div>
+                              </div>
+                            );
+                          })}
+
+                          {/* Add Division Card Button */}
+                          <button
+                            type="button"
+                            onClick={() => handleOpenAddDiv(s.id)}
+                            className="p-3.5 rounded-xl border border-dashed border-primary-300 hover:border-primary-500 bg-primary-50/40 hover:bg-primary-50 text-primary-700 font-bold text-xs flex flex-col items-center justify-center gap-1.5 transition min-h-[90px]"
+                          >
+                            <Plus className="w-4 h-4 text-primary-600" />
+                            <span>Add Division</span>
+                          </button>
+                        </div>
                       </div>
-                    ) : (
-                      <button
-                        onClick={() => setAddingDivStdId(s.id)}
-                        className="px-3 py-1 rounded-lg border border-dashed border-primary-300 text-primary-600 font-semibold text-xs hover:bg-primary-50 transition flex items-center gap-1"
-                      >
-                        <Plus className="w-3 h-3" /> {t('add_div_btn')}
-                      </button>
-                    )}
-                  </div>
-                </div>
-              ))}
-            </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
           </div>
         )}
 
@@ -1621,6 +1724,313 @@ const SettingsPage: React.FC = () => {
                 className="px-5 py-2.5 rounded-xl bg-primary-600 hover:bg-primary-700 text-white font-extrabold text-xs shadow-md shadow-primary-600/30 transition"
               >
                 Save Changes
+              </button>
+            </div>
+          </form>
+        </Modal>
+      )}
+
+      {/* ================= MODAL: ADD STANDARD TIER ================= */}
+      {isAddStdModalOpen && (
+        <Modal
+          isOpen={isAddStdModalOpen}
+          onClose={() => setIsAddStdModalOpen(false)}
+          title="Establish New Standard Tier"
+          subtitle="Configure a new academic grade level (e.g. Standard 11 Commerce) in the PostgreSQL database."
+          maxWidth="md"
+        >
+          <form onSubmit={handleCreateStd} className="space-y-4">
+            <div>
+              <label className="block text-xs font-bold text-slate-700 uppercase mb-1.5">Standard Title / Name *</label>
+              <input
+                type="text"
+                value={newStdName}
+                onChange={(e) => setNewStdName(e.target.value)}
+                placeholder="e.g. Standard 11 Commerce, Standard 12 Science"
+                className="w-full p-2.5 border border-slate-300 rounded-xl text-xs font-bold text-slate-800 focus:ring-2 focus:ring-primary-500"
+                required
+              />
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="block text-xs font-bold text-slate-700 uppercase mb-1.5">GSEB Level Sequence *</label>
+                <select
+                  value={newStdLevel}
+                  onChange={(e) => setNewStdLevel(e.target.value)}
+                  className="w-full p-2.5 border border-slate-300 rounded-xl text-xs font-bold text-slate-800 bg-white focus:ring-2 focus:ring-primary-500"
+                >
+                  <option value="9">Level 9 (Secondary)</option>
+                  <option value="10">Level 10 (Board Tier)</option>
+                  <option value="11">Level 11 (Higher Secondary)</option>
+                  <option value="12">Level 12 (Board Tier)</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-700 uppercase mb-1.5">Maximum Capacity</label>
+                <input
+                  type="number"
+                  value={newStdCapacity}
+                  onChange={(e) => setNewStdCapacity(e.target.value)}
+                  placeholder="80"
+                  min="10"
+                  max="500"
+                  className="w-full p-2.5 border border-slate-300 rounded-xl text-xs font-bold text-slate-800 focus:ring-2 focus:ring-primary-500"
+                />
+              </div>
+            </div>
+
+            <div className="flex items-center justify-end gap-2 pt-4 border-t border-slate-100">
+              <button
+                type="button"
+                onClick={() => setIsAddStdModalOpen(false)}
+                className="px-4 py-2 rounded-xl text-xs font-bold text-slate-600 hover:bg-slate-100"
+              >
+                Cancel
+              </button>
+              <button
+                type="submit"
+                className="px-5 py-2.5 rounded-xl bg-primary-600 hover:bg-primary-700 text-white font-extrabold text-xs shadow-md shadow-primary-600/30 transition"
+              >
+                Establish Standard
+              </button>
+            </div>
+          </form>
+        </Modal>
+      )}
+
+      {/* ================= MODAL: EDIT STANDARD TIER ================= */}
+      {editingStandard && (
+        <Modal
+          isOpen={!!editingStandard}
+          onClose={() => setEditingStandard(null)}
+          title={`Edit Standard: ${editingStandard.name}`}
+          subtitle="Modify grade name, curriculum level sequence, or student capacity."
+          maxWidth="md"
+        >
+          <form onSubmit={handleUpdateStd} className="space-y-4">
+            <div>
+              <label className="block text-xs font-bold text-slate-700 uppercase mb-1.5">Standard Title / Name *</label>
+              <input
+                type="text"
+                value={editStdName}
+                onChange={(e) => setEditStdName(e.target.value)}
+                placeholder="e.g. Standard 10"
+                className="w-full p-2.5 border border-slate-300 rounded-xl text-xs font-bold text-slate-800 focus:ring-2 focus:ring-primary-500"
+                required
+              />
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="block text-xs font-bold text-slate-700 uppercase mb-1.5">GSEB Level Sequence *</label>
+                <select
+                  value={editStdLevel}
+                  onChange={(e) => setEditStdLevel(e.target.value)}
+                  className="w-full p-2.5 border border-slate-300 rounded-xl text-xs font-bold text-slate-800 bg-white focus:ring-2 focus:ring-primary-500"
+                >
+                  <option value="9">Level 9</option>
+                  <option value="10">Level 10</option>
+                  <option value="11">Level 11</option>
+                  <option value="12">Level 12</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-700 uppercase mb-1.5">Max Student Capacity</label>
+                <input
+                  type="number"
+                  value={editStdCapacity}
+                  onChange={(e) => setEditStdCapacity(e.target.value)}
+                  placeholder="80"
+                  min="10"
+                  max="500"
+                  className="w-full p-2.5 border border-slate-300 rounded-xl text-xs font-bold text-slate-800 focus:ring-2 focus:ring-primary-500"
+                />
+              </div>
+            </div>
+
+            <div className="flex items-center justify-end gap-2 pt-4 border-t border-slate-100">
+              <button
+                type="button"
+                onClick={() => setEditingStandard(null)}
+                className="px-4 py-2 rounded-xl text-xs font-bold text-slate-600 hover:bg-slate-100"
+              >
+                Cancel
+              </button>
+              <button
+                type="submit"
+                className="px-5 py-2.5 rounded-xl bg-primary-600 hover:bg-primary-700 text-white font-extrabold text-xs shadow-md shadow-primary-600/30 transition"
+              >
+                Save Standard Changes
+              </button>
+            </div>
+          </form>
+        </Modal>
+      )}
+
+      {/* ================= MODAL: ADD DIVISION SECTION ================= */}
+      {isAddDivModalOpen && (
+        <Modal
+          isOpen={isAddDivModalOpen}
+          onClose={() => setIsAddDivModalOpen(false)}
+          title="Assign New Division Section"
+          subtitle="Add a classroom section (e.g. Division A, B) to the selected standard grade tier."
+          maxWidth="md"
+        >
+          <form onSubmit={handleCreateDiv} className="space-y-4">
+            <div>
+              <label className="block text-xs font-bold text-slate-700 uppercase mb-1.5">Standard Tier *</label>
+              <select
+                value={addDivStdId}
+                onChange={(e) => setAddDivStdId(e.target.value)}
+                className="w-full p-2.5 border border-slate-300 rounded-xl text-xs font-bold text-slate-800 bg-white focus:ring-2 focus:ring-primary-500"
+                required
+              >
+                {data.standards?.map((s: any) => (
+                  <option key={s.id} value={s.id}>
+                    {s.name} (Level {s.level})
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="block text-xs font-bold text-slate-700 uppercase mb-1.5">Division Letter / Code *</label>
+                <input
+                  type="text"
+                  value={newDivName}
+                  onChange={(e) => setNewDivName(e.target.value.toUpperCase())}
+                  placeholder="e.g. A, B, C"
+                  className="w-full p-2.5 border border-slate-300 rounded-xl text-xs font-extrabold text-slate-800 uppercase focus:ring-2 focus:ring-primary-500"
+                  maxLength={5}
+                  required
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-700 uppercase mb-1.5">Class Capacity</label>
+                <input
+                  type="number"
+                  value={newDivCapacity}
+                  onChange={(e) => setNewDivCapacity(e.target.value)}
+                  placeholder="40"
+                  min="5"
+                  max="150"
+                  className="w-full p-2.5 border border-slate-300 rounded-xl text-xs font-bold text-slate-800 focus:ring-2 focus:ring-primary-500"
+                />
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-xs font-bold text-slate-700 uppercase mb-1.5">Room Number / Wing (Optional)</label>
+              <input
+                type="text"
+                value={newDivRoom}
+                onChange={(e) => setNewDivRoom(e.target.value)}
+                placeholder="e.g. Room 101, Room 204-West Wing"
+                className="w-full p-2.5 border border-slate-300 rounded-xl text-xs font-semibold text-slate-800 focus:ring-2 focus:ring-primary-500"
+              />
+            </div>
+
+            <div className="flex items-center justify-end gap-2 pt-4 border-t border-slate-100">
+              <button
+                type="button"
+                onClick={() => setIsAddDivModalOpen(false)}
+                className="px-4 py-2 rounded-xl text-xs font-bold text-slate-600 hover:bg-slate-100"
+              >
+                Cancel
+              </button>
+              <button
+                type="submit"
+                className="px-5 py-2.5 rounded-xl bg-primary-600 hover:bg-primary-700 text-white font-extrabold text-xs shadow-md shadow-primary-600/30 transition"
+              >
+                Create Division
+              </button>
+            </div>
+          </form>
+        </Modal>
+      )}
+
+      {/* ================= MODAL: EDIT DIVISION SECTION ================= */}
+      {editingDivision && (
+        <Modal
+          isOpen={!!editingDivision}
+          onClose={() => setEditingDivision(null)}
+          title={`Edit Class Division: ${editingDivision.name}`}
+          subtitle="Modify division section identifier, room assignment, or standard tier."
+          maxWidth="md"
+        >
+          <form onSubmit={handleUpdateDiv} className="space-y-4">
+            <div>
+              <label className="block text-xs font-bold text-slate-700 uppercase mb-1.5">Standard Tier</label>
+              <select
+                value={editDivStdId}
+                onChange={(e) => setEditDivStdId(e.target.value)}
+                className="w-full p-2.5 border border-slate-300 rounded-xl text-xs font-bold text-slate-800 bg-white focus:ring-2 focus:ring-primary-500"
+              >
+                {data.standards?.map((s: any) => (
+                  <option key={s.id} value={s.id}>
+                    {s.name} (Level {s.level})
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="block text-xs font-bold text-slate-700 uppercase mb-1.5">Division Name / Code *</label>
+                <input
+                  type="text"
+                  value={editDivName}
+                  onChange={(e) => setEditDivName(e.target.value.toUpperCase())}
+                  placeholder="e.g. A"
+                  className="w-full p-2.5 border border-slate-300 rounded-xl text-xs font-extrabold text-slate-800 uppercase focus:ring-2 focus:ring-primary-500"
+                  maxLength={5}
+                  required
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-700 uppercase mb-1.5">Class Capacity</label>
+                <input
+                  type="number"
+                  value={editDivCapacity}
+                  onChange={(e) => setEditDivCapacity(e.target.value)}
+                  placeholder="40"
+                  min="5"
+                  max="150"
+                  className="w-full p-2.5 border border-slate-300 rounded-xl text-xs font-bold text-slate-800 focus:ring-2 focus:ring-primary-500"
+                />
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-xs font-bold text-slate-700 uppercase mb-1.5">Room Assignment</label>
+              <input
+                type="text"
+                value={editDivRoom}
+                onChange={(e) => setEditDivRoom(e.target.value)}
+                placeholder="e.g. Room 101"
+                className="w-full p-2.5 border border-slate-300 rounded-xl text-xs font-semibold text-slate-800 focus:ring-2 focus:ring-primary-500"
+              />
+            </div>
+
+            <div className="flex items-center justify-end gap-2 pt-4 border-t border-slate-100">
+              <button
+                type="button"
+                onClick={() => setEditingDivision(null)}
+                className="px-4 py-2 rounded-xl text-xs font-bold text-slate-600 hover:bg-slate-100"
+              >
+                Cancel
+              </button>
+              <button
+                type="submit"
+                className="px-5 py-2.5 rounded-xl bg-primary-600 hover:bg-primary-700 text-white font-extrabold text-xs shadow-md shadow-primary-600/30 transition"
+              >
+                Save Division Changes
               </button>
             </div>
           </form>

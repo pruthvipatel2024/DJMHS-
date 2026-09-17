@@ -1,5 +1,6 @@
 const prisma = require('../config/db');
 const { exportMultiSheetExcel } = require('../services/excel.service');
+const { clearDashboardCache } = require('./dashboard.controller');
 
 // Default initial GSEB subjects to seed if standard subjects are empty
 const defaultGSEBSubjects = {
@@ -44,43 +45,75 @@ const defaultGSEBSubjects = {
 const getSettings = async (req, res, next) => {
   try {
     const settings = await prisma.setting.findMany();
-    const academicYears = await prisma.academicYear.findMany({ orderBy: { name: 'desc' } });
-    const departments = await prisma.department.findMany({ include: { _count: { select: { staffMembers: true } } } });
-    
+    const academicYears = await prisma.academicYear.findMany({
+      where: { deletedAt: null },
+      orderBy: { name: 'desc' },
+    });
+    const departments = await prisma.department.findMany({
+      where: { deletedAt: null },
+      include: { _count: { select: { staffMembers: true } } },
+      orderBy: { name: 'asc' },
+    });
+
     // Auto-seed standard subjects if empty
-    const standardsCount = await prisma.standard.count();
+    const standardsCount = await prisma.standard.count({ where: { deletedAt: null } });
     if (standardsCount > 0) {
-      const allStandards = await prisma.standard.findMany({ include: { subjects: true } });
+      const allStandards = await prisma.standard.findMany({
+        where: { deletedAt: null },
+        include: { subjects: { where: { deletedAt: null } } },
+      });
       for (const std of allStandards) {
         if (std.subjects.length === 0 && defaultGSEBSubjects[std.level]) {
           const list = defaultGSEBSubjects[std.level];
           for (const s of list) {
-            await prisma.subject.create({
-              data: {
-                standardId: std.id,
-                name: s.name,
-                code: s.code,
-                isOptional: s.isOptional,
-              },
-            }).catch(() => {});
+            await prisma.subject
+              .create({
+                data: {
+                  standardId: std.id,
+                  name: s.name,
+                  code: s.code,
+                  isOptional: s.isOptional,
+                },
+              })
+              .catch(() => {});
           }
         }
       }
     }
 
     const standards = await prisma.standard.findMany({
+      where: { deletedAt: null },
       include: {
         divisions: {
+          where: { deletedAt: null },
           include: {
+            students: {
+              where: { status: 'ACTIVE', deletedAt: null },
+              select: { id: true, grNumber: true, firstName: true, lastName: true },
+            },
+            classTeachers: {
+              include: {
+                staff: { select: { id: true, empId: true, firstName: true, lastName: true } },
+              },
+            },
             subjectMappings: {
               include: {
                 staff: { select: { id: true, empId: true, firstName: true, lastName: true } },
                 subject: true,
               },
             },
+            _count: {
+              select: {
+                students: true,
+                classTeachers: true,
+                subjectMappings: true,
+              },
+            },
           },
+          orderBy: { name: 'asc' },
         },
         subjects: {
+          where: { deletedAt: null },
           include: {
             teacherMappings: {
               include: {
@@ -96,6 +129,7 @@ const getSettings = async (req, res, next) => {
     });
 
     const allSubjects = await prisma.subject.findMany({
+      where: { deletedAt: null },
       include: {
         standard: true,
         teacherMappings: {
@@ -143,6 +177,7 @@ const updateSetting = async (req, res, next) => {
       update: { value },
       create: { key, value, category: 'GENERAL' },
     });
+    if (typeof clearDashboardCache === 'function') clearDashboardCache();
     res.status(200).json({ success: true, message: 'Institutional parameter saved successfully.', data: updated });
   } catch (err) {
     next(err);
@@ -152,9 +187,13 @@ const updateSetting = async (req, res, next) => {
 const createDepartment = async (req, res, next) => {
   try {
     const { name, description } = req.body;
+    if (!name || !name.trim()) {
+      return res.status(400).json({ success: false, message: 'Department name is required.' });
+    }
     const newDept = await prisma.department.create({
-      data: { name: name.trim(), description: description?.trim() },
+      data: { name: name.trim(), description: description?.trim() || null },
     });
+    if (typeof clearDashboardCache === 'function') clearDashboardCache();
     res.status(201).json({ success: true, message: 'Department faculty wing established.', data: newDept });
   } catch (err) {
     next(err);
@@ -164,25 +203,31 @@ const createDepartment = async (req, res, next) => {
 const createStandard = async (req, res, next) => {
   try {
     const { name, level, capacity } = req.body;
+    if (!name || !name.trim()) {
+      return res.status(400).json({ success: false, message: 'Standard name is required.' });
+    }
+    const stdLevel = parseInt(level, 10) || 11;
     const std = await prisma.standard.create({
-      data: { name: name.trim(), level: parseInt(level, 10), capacity: parseInt(capacity, 10) || 80 },
+      data: { name: name.trim(), level: stdLevel, capacity: parseInt(capacity, 10) || 80 },
     });
 
-    // Auto-seed default subjects for this standard level if available
-    const lvl = parseInt(level, 10);
-    if (defaultGSEBSubjects[lvl]) {
-      for (const s of defaultGSEBSubjects[lvl]) {
-        await prisma.subject.create({
-          data: {
-            standardId: std.id,
-            name: s.name,
-            code: s.code,
-            isOptional: s.isOptional,
-          },
-        }).catch(() => {});
+    // Auto-seed default GSEB subjects for this standard level if available
+    if (defaultGSEBSubjects[stdLevel]) {
+      for (const s of defaultGSEBSubjects[stdLevel]) {
+        await prisma.subject
+          .create({
+            data: {
+              standardId: std.id,
+              name: s.name,
+              code: s.code,
+              isOptional: s.isOptional,
+            },
+          })
+          .catch(() => {});
       }
     }
 
+    if (typeof clearDashboardCache === 'function') clearDashboardCache();
     res.status(201).json({ success: true, message: 'New standard tier established.', data: std });
   } catch (err) {
     next(err);
@@ -192,10 +237,34 @@ const createStandard = async (req, res, next) => {
 const createDivision = async (req, res, next) => {
   try {
     const { standardId, name, roomNumber, capacity } = req.body;
-    const div = await prisma.division.create({
-      data: { standardId, name: name.trim(), roomNumber: roomNumber?.trim() || null, capacity: parseInt(capacity, 10) || 40 },
+    if (!standardId || !name || !name.trim()) {
+      return res.status(400).json({ success: false, message: 'Standard and Division name are required.' });
+    }
+    const cleanName = name.trim().toUpperCase();
+
+    // Check if duplicate division name in this standard
+    const existing = await prisma.division.findFirst({
+      where: { standardId, name: cleanName, deletedAt: null },
     });
-    res.status(201).json({ success: true, message: `Division '${name}' assigned successfully.`, data: div });
+    if (existing) {
+      return res.status(400).json({
+        success: false,
+        message: `Division '${cleanName}' already exists in this standard tier.`,
+      });
+    }
+
+    const div = await prisma.division.create({
+      data: {
+        standardId,
+        name: cleanName,
+        roomNumber: roomNumber?.trim() || null,
+        capacity: parseInt(capacity, 10) || 40,
+      },
+      include: { standard: true },
+    });
+
+    if (typeof clearDashboardCache === 'function') clearDashboardCache();
+    res.status(201).json({ success: true, message: `Division '${cleanName}' assigned successfully.`, data: div });
   } catch (err) {
     next(err);
   }
@@ -207,8 +276,12 @@ const updateDepartment = async (req, res, next) => {
     const { name, description } = req.body;
     const updated = await prisma.department.update({
       where: { id },
-      data: { name: name?.trim(), description: description?.trim() },
+      data: {
+        ...(name && { name: name.trim() }),
+        ...(description !== undefined && { description: description ? description.trim() : null }),
+      },
     });
+    if (typeof clearDashboardCache === 'function') clearDashboardCache();
     res.status(200).json({ success: true, message: 'Department details updated.', data: updated });
   } catch (err) {
     next(err);
@@ -218,7 +291,15 @@ const updateDepartment = async (req, res, next) => {
 const deleteDepartment = async (req, res, next) => {
   try {
     const { id } = req.params;
+    const staffCount = await prisma.staff.count({ where: { departmentId: id } });
+    if (staffCount > 0) {
+      return res.status(400).json({
+        success: false,
+        message: `Cannot delete department because ${staffCount} staff member(s) are currently assigned to it. Please reassign staff first.`,
+      });
+    }
     await prisma.department.delete({ where: { id } });
+    if (typeof clearDashboardCache === 'function') clearDashboardCache();
     res.status(200).json({ success: true, message: 'Department removed from database.' });
   } catch (err) {
     next(err);
@@ -229,14 +310,24 @@ const updateStandard = async (req, res, next) => {
   try {
     const { id } = req.params;
     const { name, level, capacity } = req.body;
+
+    const data = {};
+    if (name !== undefined && name !== null && String(name).trim()) {
+      data.name = String(name).trim();
+    }
+    if (level !== undefined && level !== null) {
+      data.level = parseInt(level, 10);
+    }
+    if (capacity !== undefined && capacity !== null) {
+      data.capacity = parseInt(capacity, 10);
+    }
+
     const updated = await prisma.standard.update({
       where: { id },
-      data: {
-        ...(name && { name: name.trim() }),
-        ...(level && { level: parseInt(level, 10) }),
-        ...(capacity && { capacity: parseInt(capacity, 10) }),
-      },
+      data,
     });
+
+    if (typeof clearDashboardCache === 'function') clearDashboardCache();
     res.status(200).json({ success: true, message: 'Standard details updated.', data: updated });
   } catch (err) {
     next(err);
@@ -246,8 +337,63 @@ const updateStandard = async (req, res, next) => {
 const deleteStandard = async (req, res, next) => {
   try {
     const { id } = req.params;
-    await prisma.standard.delete({ where: { id } });
-    res.status(200).json({ success: true, message: 'Standard removed from database.' });
+    const standard = await prisma.standard.findUnique({
+      where: { id },
+      include: {
+        divisions: {
+          include: {
+            students: { where: { status: 'ACTIVE', deletedAt: null } },
+          },
+        },
+        subjects: true,
+      },
+    });
+
+    if (!standard) {
+      return res.status(404).json({ success: false, message: 'Standard tier not found.' });
+    }
+
+    // Check if any active students are enrolled in this standard's divisions
+    const activeStudentsCount = standard.divisions.reduce((acc, d) => acc + d.students.length, 0);
+    if (activeStudentsCount > 0) {
+      return res.status(400).json({
+        success: false,
+        message: `Cannot delete '${standard.name}' because it contains ${activeStudentsCount} active enrolled student(s). Please reassign or transfer students to another standard first.`,
+      });
+    }
+
+    const divIds = standard.divisions.map((d) => d.id);
+    const subIds = standard.subjects.map((s) => s.id);
+
+    await prisma.$transaction(async (tx) => {
+      if (divIds.length > 0) {
+        await tx.classTeacherMapping.deleteMany({ where: { divisionId: { in: divIds } } });
+        await tx.staffSubjectMapping.deleteMany({ where: { divisionId: { in: divIds } } });
+        await tx.timetable.deleteMany({ where: { divisionId: { in: divIds } } });
+        await tx.studentAttendance.deleteMany({ where: { divisionId: { in: divIds } } });
+        await tx.studentAcademicHistory.deleteMany({
+          where: {
+            OR: [{ fromDivisionId: { in: divIds } }, { toDivisionId: { in: divIds } }],
+          },
+        });
+        await tx.student.deleteMany({ where: { divisionId: { in: divIds } } });
+        await tx.division.deleteMany({ where: { id: { in: divIds } } });
+      }
+
+      if (subIds.length > 0) {
+        await tx.staffSubjectMapping.deleteMany({ where: { subjectId: { in: subIds } } });
+        await tx.timetable.deleteMany({ where: { subjectId: { in: subIds } } });
+        await tx.examSchedule.deleteMany({ where: { subjectId: { in: subIds } } });
+        await tx.subject.deleteMany({ where: { id: { in: subIds } } });
+      }
+
+      await tx.exam.deleteMany({ where: { standardId: id } });
+      await tx.feeStructure.deleteMany({ where: { standardId: id } });
+      await tx.standard.delete({ where: { id } });
+    });
+
+    if (typeof clearDashboardCache === 'function') clearDashboardCache();
+    res.status(200).json({ success: true, message: `Standard '${standard.name}' and all associated empty divisions/curriculums removed successfully.` });
   } catch (err) {
     next(err);
   }
@@ -256,16 +402,30 @@ const deleteStandard = async (req, res, next) => {
 const updateDivision = async (req, res, next) => {
   try {
     const { id } = req.params;
-    const { name, roomNumber, capacity } = req.body;
+    const { name, roomNumber, capacity, standardId } = req.body;
+
+    const data = {};
+    if (name !== undefined && name !== null && String(name).trim()) {
+      data.name = String(name).trim().toUpperCase();
+    }
+    if (roomNumber !== undefined) {
+      data.roomNumber = roomNumber ? String(roomNumber).trim() : null;
+    }
+    if (capacity !== undefined && capacity !== null) {
+      data.capacity = parseInt(capacity, 10);
+    }
+    if (standardId !== undefined && standardId !== null) {
+      data.standardId = standardId;
+    }
+
     const updated = await prisma.division.update({
       where: { id },
-      data: {
-        ...(name && { name: name.trim() }),
-        ...(roomNumber !== undefined && { roomNumber: roomNumber ? roomNumber.trim() : null }),
-        ...(capacity && { capacity: parseInt(capacity, 10) }),
-      },
+      data,
+      include: { standard: true },
     });
-    res.status(200).json({ success: true, message: 'Division details updated.', data: updated });
+
+    if (typeof clearDashboardCache === 'function') clearDashboardCache();
+    res.status(200).json({ success: true, message: `Division '${updated.name}' updated successfully.`, data: updated });
   } catch (err) {
     next(err);
   }
@@ -274,8 +434,42 @@ const updateDivision = async (req, res, next) => {
 const deleteDivision = async (req, res, next) => {
   try {
     const { id } = req.params;
-    await prisma.division.delete({ where: { id } });
-    res.status(200).json({ success: true, message: 'Division removed from database.' });
+    const division = await prisma.division.findUnique({
+      where: { id },
+      include: {
+        standard: true,
+        students: { where: { status: 'ACTIVE', deletedAt: null } },
+      },
+    });
+
+    if (!division) {
+      return res.status(404).json({ success: false, message: 'Division section not found.' });
+    }
+
+    // Check if active students are enrolled in this division
+    if (division.students.length > 0) {
+      return res.status(400).json({
+        success: false,
+        message: `Cannot delete Division '${division.name}' (${division.standard?.name || 'Class'}) because it contains ${division.students.length} active enrolled student(s). Please reassign or transfer students first.`,
+      });
+    }
+
+    await prisma.$transaction(async (tx) => {
+      await tx.classTeacherMapping.deleteMany({ where: { divisionId: id } });
+      await tx.staffSubjectMapping.deleteMany({ where: { divisionId: id } });
+      await tx.timetable.deleteMany({ where: { divisionId: id } });
+      await tx.studentAttendance.deleteMany({ where: { divisionId: id } });
+      await tx.studentAcademicHistory.deleteMany({
+        where: {
+          OR: [{ fromDivisionId: id }, { toDivisionId: id }],
+        },
+      });
+      await tx.student.deleteMany({ where: { divisionId: id } });
+      await tx.division.delete({ where: { id } });
+    });
+
+    if (typeof clearDashboardCache === 'function') clearDashboardCache();
+    res.status(200).json({ success: true, message: `Division '${division.name}' removed successfully from database.` });
   } catch (err) {
     next(err);
   }
@@ -342,6 +536,7 @@ const createSubject = async (req, res, next) => {
       include: { standard: true },
     });
 
+    if (typeof clearDashboardCache === 'function') clearDashboardCache();
     res.status(201).json({ success: true, message: `Subject '${cleanName}' created successfully.`, data: subject });
   } catch (err) {
     next(err);
@@ -365,6 +560,7 @@ const updateSubject = async (req, res, next) => {
       include: { standard: true },
     });
 
+    if (typeof clearDashboardCache === 'function') clearDashboardCache();
     res.status(200).json({ success: true, message: 'Subject details updated successfully.', data: updated });
   } catch (err) {
     next(err);
@@ -381,6 +577,7 @@ const deleteSubject = async (req, res, next) => {
       await tx.subject.delete({ where: { id } });
     });
 
+    if (typeof clearDashboardCache === 'function') clearDashboardCache();
     res.status(200).json({ success: true, message: 'Subject and its allocations deleted from database.' });
   } catch (err) {
     next(err);
@@ -455,6 +652,7 @@ const assignStaffSubject = async (req, res, next) => {
       });
     });
 
+    if (typeof clearDashboardCache === 'function') clearDashboardCache();
     res.status(200).json({ success: true, message: 'Teacher assigned to subject and class successfully.', data: mapping });
   } catch (err) {
     next(err);
@@ -502,6 +700,7 @@ const bulkSaveClassSubjectAssignments = async (req, res, next) => {
       return created;
     });
 
+    if (typeof clearDashboardCache === 'function') clearDashboardCache();
     res.status(200).json({
       success: true,
       message: `Class subject teacher allocations saved successfully for ${division.standard.name} Division ${division.name} (${result.length} subject teachers assigned).`,
@@ -516,6 +715,7 @@ const deleteSubjectAllocation = async (req, res, next) => {
   try {
     const { id } = req.params;
     await prisma.staffSubjectMapping.delete({ where: { id } });
+    if (typeof clearDashboardCache === 'function') clearDashboardCache();
     res.status(200).json({ success: true, message: 'Teacher allocation removed from this subject and class.' });
   } catch (err) {
     next(err);
