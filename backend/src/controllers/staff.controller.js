@@ -257,6 +257,18 @@ const createStaff = async (req, res, next) => {
       }
     }
 
+    // Parse subject allocations if provided
+    let parsedSubjectAllocations = [];
+    if (typeof subjectAllocations === 'string') {
+      try {
+        parsedSubjectAllocations = JSON.parse(subjectAllocations);
+      } catch (e) {
+        parsedSubjectAllocations = [];
+      }
+    } else if (Array.isArray(subjectAllocations)) {
+      parsedSubjectAllocations = subjectAllocations;
+    }
+
     const validSubjectMappings = (parsedSubjectAllocations || [])
       .filter((item) => item && item.subjectId && item.divisionId)
       .map((item) => ({
