@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { NavLink, Outlet, useNavigate, Link } from 'react-router-dom';
+import React, { useState, useRef, useEffect } from 'react';
+import { NavLink, Outlet, Link } from 'react-router-dom';
 import {
   LayoutDashboard,
   Users,
@@ -15,13 +15,10 @@ import {
   Settings,
   LogOut,
   Menu,
-  X,
-  Bell,
-  Shield,
-  BookOpen,
   ChevronRight,
   Laptop,
-  Award
+  Award,
+  Calendar
 } from 'lucide-react';
 import { useAuth } from '../features/auth/AuthContext';
 import { useTranslation } from 'react-i18next';
@@ -50,6 +47,22 @@ const AdminLayout: React.FC = () => {
   const { t } = useTranslation();
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [userMenuOpen, setUserMenuOpen] = useState(false);
+  const userMenuRef = useRef<HTMLDivElement>(null);
+
+  // Close user dropdown on outside click
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (userMenuRef.current && !userMenuRef.current.contains(event.target as Node)) {
+        setUserMenuOpen(false);
+      }
+    };
+    if (userMenuOpen) {
+      document.addEventListener('mousedown', handleClickOutside);
+    }
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [userMenuOpen]);
 
   return (
     <div className="min-h-screen bg-slate-50 flex font-sans">
@@ -62,25 +75,29 @@ const AdminLayout: React.FC = () => {
         />
       )}
 
-      {/* Left Navigation Sidebar */}
-      <aside className={`fixed inset-y-0 left-0 z-50 w-64 bg-primary-800 text-white flex flex-col transition-transform duration-300 transform ${
-        sidebarOpen ? 'translate-x-0' : '-translate-x-full'
-      } lg:translate-x-0 lg:static lg:flex-shrink-0 shadow-2xl`}>
+      {/* Left Navigation Sidebar - Fixed Full-Height Non-Scrolling */}
+      <aside
+        className={`fixed inset-y-0 left-0 z-50 w-64 bg-primary-900 text-white flex flex-col h-screen max-h-screen transition-transform duration-300 transform ${
+          sidebarOpen ? 'translate-x-0' : '-translate-x-full'
+        } lg:translate-x-0 lg:sticky lg:top-0 lg:flex-shrink-0 shadow-2xl border-r border-primary-800/80 select-none`}
+      >
         
-        {/* Brand Header */}
-        <div className="h-20 px-5 flex items-center gap-3 border-b border-primary-700/60 flex-shrink-0 bg-primary-900/40">
-          <div className="w-11 h-11 rounded-full bg-white p-0.5 shadow-md border-2 border-accent-400 overflow-hidden flex items-center justify-center flex-shrink-0">
-            <img src={logo} alt="DJMHS School Logo" className="w-full h-full object-cover rounded-full" />
+        {/* Compact Brand Header (h-16 / 64px) */}
+        <div className="h-16 px-4 flex items-center gap-3 border-b border-primary-800/80 flex-shrink-0 bg-primary-950/60">
+          <div className="w-10 h-10 rounded-xl bg-white p-0.5 shadow-md border border-accent-400/80 overflow-hidden flex items-center justify-center flex-shrink-0">
+            <img src={logo} alt="DJMHS Logo" className="w-full h-full object-cover rounded-lg" />
           </div>
-          <div className="overflow-hidden">
-            <h2 className="text-sm font-black tracking-tight text-white truncate uppercase">DJMHS HIGH SCHOOL</h2>
-            <p className="text-[11px] text-accent-400 font-bold tracking-wide">ERP Executive Core</p>
+          <div className="overflow-hidden min-w-0">
+            <h2 className="text-xs font-black tracking-tight text-white truncate uppercase">DJMHS HIGH SCHOOL</h2>
+            <p className="text-[10px] text-accent-400 font-bold tracking-wide flex items-center gap-1">
+              <span>ERP Admin Core</span>
+            </p>
           </div>
         </div>
 
-        {/* Navigation Items */}
-        <div className="flex-1 overflow-y-auto px-4 py-6 space-y-1.5 custom-scrollbar">
-          <div className="text-[10px] uppercase font-bold tracking-wider text-primary-300/70 px-3 mb-2">
+        {/* Navigation Items - Formatted to fit viewport without scrolling */}
+        <nav className="flex-1 py-2 px-2.5 space-y-0.5 overflow-y-auto lg:overflow-y-hidden hover:lg:overflow-y-auto custom-scrollbar flex flex-col justify-start">
+          <div className="text-[9px] uppercase font-black tracking-wider text-primary-400/80 px-2.5 py-1">
             {t('institutional_modules')}
           </div>
           {navItems.map((item) => {
@@ -92,97 +109,108 @@ const AdminLayout: React.FC = () => {
                 end={item.exact}
                 onClick={() => setSidebarOpen(false)}
                 className={({ isActive }) =>
-                  `flex items-center gap-3 px-3.5 py-2.5 rounded-xl font-medium text-xs transition-all ${
+                  `flex items-center gap-2.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
                     isActive
-                      ? 'bg-primary-600 text-white shadow-lg shadow-primary-900/40 border border-primary-500 font-bold'
-                      : 'text-primary-100/80 hover:bg-primary-700/50 hover:text-white'
+                      ? 'bg-primary-600 text-white shadow-md shadow-primary-950/50 border border-primary-500 font-bold'
+                      : 'text-primary-100/75 hover:bg-primary-800/70 hover:text-white'
                   }`
                 }
               >
                 <Icon className="w-4 h-4 flex-shrink-0 text-accent-400" />
                 <span className="flex-1 truncate">{t(item.labelKey)}</span>
-                <ChevronRight className="w-3.5 h-3.5 opacity-40 group-hover:opacity-100" />
+                <ChevronRight className="w-3 h-3 opacity-30 group-hover:opacity-100" />
               </NavLink>
             );
           })}
-        </div>
-
-        {/* Footer info & Bhavnagar heritage */}
-        <div className="p-4 border-t border-primary-700/60 bg-primary-900/40 text-[11px] text-primary-200/80">
-          <div className="flex items-center justify-between mb-1">
-            <span className="font-semibold text-white">Academic Year:</span>
-            <span className="px-2 py-0.5 rounded bg-primary-700 font-bold text-accent-300">2026-2027</span>
-          </div>
-          <p className="text-[10px] text-primary-400">Bhavnagar, Gujarat — Est. 1959</p>
-        </div>
+        </nav>
       </aside>
 
       {/* Main Content Area */}
-      <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
+      <div className="flex-1 flex flex-col min-w-0 min-h-screen">
         
-        {/* Top Header Navigation */}
-        <header className="h-16 sm:h-20 bg-white border-b border-slate-200 shadow-xs px-3 sm:px-6 flex items-center justify-between flex-shrink-0">
-          <div className="flex items-center gap-2 sm:gap-4 min-w-0">
+        {/* Fixed / Sticky Top Header Navigation */}
+        <header className="h-16 bg-white border-b border-slate-200/80 shadow-2xs px-3 sm:px-6 flex items-center justify-between sticky top-0 z-30 flex-shrink-0 backdrop-blur-md bg-white/95">
+          <div className="flex items-center gap-2 sm:gap-3.5 min-w-0">
             <button
               onClick={() => setSidebarOpen(true)}
-              className="lg:hidden text-slate-500 hover:text-slate-700 p-2 rounded-xl border border-slate-200 flex-shrink-0"
+              className="lg:hidden text-slate-600 hover:text-slate-900 p-2 rounded-xl border border-slate-200 hover:bg-slate-50 transition flex-shrink-0"
+              aria-label="Open menu"
             >
               <Menu className="w-5 h-5" />
             </button>
             <div className="min-w-0">
-              <h3 className="text-xs sm:text-sm font-bold text-slate-800 truncate">Shree Dhaneshkumar Jasvantlal Maheta High School</h3>
-              <p className="text-xs text-slate-400 hidden sm:block">Administrative Enterprise Console</p>
+              <h3 className="text-xs sm:text-sm font-black text-slate-800 truncate">
+                Shree Dhaneshkumar Jasvantlal Maheta High School
+              </h3>
+              <p className="text-[11px] text-slate-400 hidden sm:flex items-center gap-1.5 font-medium">
+                <span>Administrative Enterprise Console</span>
+                <span className="text-slate-300">•</span>
+                <span className="text-primary-600 font-bold">Bhavnagar, Gujarat (Est. 1959)</span>
+              </p>
             </div>
           </div>
 
-          <div className="flex items-center gap-2 sm:gap-3.5 flex-shrink-0">
+          {/* Right Header Badges & Actions */}
+          <div className="flex items-center gap-2 sm:gap-3 flex-shrink-0">
+            
+            {/* Academic Year Pill in Navbar */}
+            <div className="hidden md:flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-primary-50 border border-primary-200/70 text-primary-800 text-[11px] font-extrabold shadow-2xs">
+              <Calendar className="w-3.5 h-3.5 text-primary-600" />
+              <span>AY: 2026-2027</span>
+            </div>
+
             <LanguageSwitcher />
 
             {/* Quick Session Shield */}
             <Link
               to="/admin/sessions"
-              className="hidden sm:inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold transition"
+              className="hidden sm:inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-slate-100 hover:bg-slate-200/80 text-slate-700 text-xs font-bold transition border border-slate-200/60 shadow-2xs"
               title={t('sessions')}
             >
               <Laptop className="w-3.5 h-3.5 text-primary-600" />
-              {t('sessions')}
+              <span className="hidden lg:inline">{t('sessions')}</span>
             </Link>
 
             {/* Notifications Dropdown */}
             <NotificationDropdown align="right" />
 
             {/* Profile Menu Toggle */}
-            <div className="relative">
+            <div className="relative" ref={userMenuRef}>
               <button
                 onClick={() => setUserMenuOpen(!userMenuOpen)}
-                className="flex items-center gap-2.5 p-1 sm:p-1.5 sm:pl-3 rounded-xl border border-slate-200 hover:bg-slate-50 transition"
+                className="flex items-center gap-2 p-1 sm:p-1.5 sm:pl-3 rounded-xl border border-slate-200 hover:bg-slate-50 transition shadow-2xs"
               >
                 <div className="text-right hidden md:block">
                   <div className="text-xs font-bold text-slate-800 leading-tight">Principal Administrator</div>
-                  <div className="text-[10px] text-primary-600 font-semibold uppercase tracking-wide">Role: {user?.role?.name}</div>
+                  <div className="text-[10px] text-primary-600 font-semibold uppercase tracking-wide">
+                    {user?.role?.name || 'ADMIN'}
+                  </div>
                 </div>
-                <div className="w-8 h-8 sm:w-9 sm:h-9 rounded-xl bg-primary-600 text-white font-bold flex items-center justify-center shadow-sm text-xs sm:text-sm">
-                  A
+                <div className="w-8 h-8 rounded-lg bg-primary-600 text-white font-extrabold flex items-center justify-center shadow-xs text-xs">
+                  {user?.identifier?.[0]?.toUpperCase() || 'A'}
                 </div>
               </button>
 
               {userMenuOpen && (
-                <div className="absolute right-0 mt-2 w-56 bg-white rounded-2xl shadow-xl border border-slate-100 py-2 z-50 animate-in fade-in duration-100">
+                <div className="absolute right-0 mt-2 w-56 bg-white rounded-2xl shadow-xl border border-slate-100 py-1.5 z-50 animate-in fade-in duration-100">
                   <div className="px-4 py-2 border-b border-slate-100 text-xs md:hidden">
                     <p className="font-bold text-slate-800">{user?.identifier}</p>
-                    <p className="text-primary-600">{user?.role?.name}</p>
+                    <p className="text-primary-600 font-semibold">{user?.role?.name}</p>
                   </div>
                   <Link
                     to="/admin/sessions"
                     onClick={() => setUserMenuOpen(false)}
-                    className="flex items-center gap-2 px-4 py-2.5 text-xs text-slate-700 hover:bg-slate-50 font-medium"
+                    className="flex items-center gap-2 px-4 py-2 text-xs text-slate-700 hover:bg-slate-50 font-medium"
                   >
                     <Laptop className="w-4 h-4 text-slate-400" />
                     Manage Device Sessions
                   </Link>
                   <button
-                    onClick={() => { setUserMenuOpen(false); logout(); }}
-                    className="w-full flex items-center gap-2 px-4 py-2.5 text-xs text-red-600 hover:bg-red-50 font-semibold border-t border-slate-100"
+                    onClick={() => {
+                      setUserMenuOpen(false);
+                      logout();
+                    }}
+                    className="w-full flex items-center gap-2 px-4 py-2 text-xs text-red-600 hover:bg-red-50 font-semibold border-t border-slate-100"
                   >
                     <LogOut className="w-4 h-4 text-red-500" />
                     Sign Out of Portal
@@ -194,7 +222,7 @@ const AdminLayout: React.FC = () => {
         </header>
 
         {/* Main Body Content */}
-        <main className="flex-1 overflow-y-auto p-3 sm:p-6 md:p-8 bg-slate-50">
+        <main className="flex-1 p-3 sm:p-6 md:p-8 bg-slate-50 overflow-x-hidden">
           <div className="max-w-7xl mx-auto">
             <Outlet />
           </div>
