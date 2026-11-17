@@ -512,12 +512,12 @@ const TimetablePage: React.FC = () => {
                         <td
                           key={pIdx}
                           onClick={() => {
-                            if (isAdmin && viewMode === 'CLASS_MATRIX') {
+                            if (isAdmin && (viewMode === 'CLASS_MATRIX' || viewMode === 'FACULTY_MATRIX')) {
                               setActiveCell({ day, period: p.label, time: p.time, existing: slot });
                             }
                           }}
                           className={`p-2.5 border-r border-slate-100 transition relative min-h-[105px] h-[105px] align-top ${
-                            isAdmin && viewMode === 'CLASS_MATRIX'
+                            isAdmin && (viewMode === 'CLASS_MATRIX' || viewMode === 'FACULTY_MATRIX')
                               ? 'cursor-pointer hover:bg-primary-50/50 group'
                               : 'cursor-default select-none'
                           } ${
@@ -568,15 +568,15 @@ const TimetablePage: React.FC = () => {
                                 <span className="font-mono font-extrabold text-slate-700 bg-slate-100 px-1.5 py-0.5 rounded">
                                   {slot.roomNumber || slot.division?.roomNumber || 'Room 101'}
                                 </span>
-                                {isAdmin && viewMode === 'CLASS_MATRIX' && (
+                                {isAdmin && (viewMode === 'CLASS_MATRIX' || viewMode === 'FACULTY_MATRIX') && (
                                   <span className="text-[9px] font-extrabold text-primary-600 opacity-0 group-hover:opacity-100 transition">
                                     Edit ✎
                                   </span>
                                 )}
                               </div>
                             </div>
-                          ) : isAdmin && viewMode === 'CLASS_MATRIX' ? (
-                            <div className="h-full w-full border border-dashed border-slate-200 rounded-xl flex items-center justify-center text-slate-400 text-[11px] font-bold group-hover:border-primary-400 group-hover:text-primary-600 group-hover:bg-white transition">
+                          ) : isAdmin && (viewMode === 'CLASS_MATRIX' || viewMode === 'FACULTY_MATRIX') ? (
+                            <div className="h-full w-full border border-dashed border-slate-200 rounded-xl flex items-center justify-center text-slate-400 text-[11px] font-bold group-hover:border-primary-400 group-hover:text-primary-600 group-hover:bg-white transition cursor-pointer">
                               {t('assign_slot')}
                             </div>
                           ) : (
@@ -596,10 +596,12 @@ const TimetablePage: React.FC = () => {
       </div>
 
       {/* Admin Slot Edit Modal */}
-      {isAdmin && activeCell && viewMode === 'CLASS_MATRIX' && (
+      {isAdmin && activeCell && (viewMode === 'CLASS_MATRIX' || viewMode === 'FACULTY_MATRIX') && (
         <TimetableCellModal
           isOpen={!!activeCell}
-          divisionId={selectedDivision}
+          mode={viewMode === 'FACULTY_MATRIX' ? 'FACULTY' : 'CLASS'}
+          divisionId={activeCell.existing?.divisionId || selectedDivision}
+          staffId={activeCell.existing?.staffId || (viewMode === 'FACULTY_MATRIX' ? selectedStaffId : undefined)}
           dayOfWeek={activeCell.day}
           periodLabel={activeCell.period}
           timeRange={activeCell.time}

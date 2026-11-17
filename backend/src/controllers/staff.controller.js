@@ -4,6 +4,7 @@ const { sendEmail, sendSMS } = require('../services/communication.service');
 const { getStaffOnboardingTemplate } = require('../services/emailTemplate.service');
 const { parseStaffBulkImport, exportToExcel } = require('../services/excel.service');
 const { uploadMediaAsset } = require('../services/cloudinary.service');
+const { clearDashboardCache } = require('./dashboard.controller');
 const fs = require('fs');
 
 const mapDesignation = (desig) => {
@@ -689,6 +690,8 @@ const deleteStaff = async (req, res, next) => {
       await tx.session.deleteMany({ where: { userId: staff.userId } });
     });
 
+    if (typeof clearDashboardCache === 'function') clearDashboardCache();
+
     res.status(200).json({ success: true, message: 'Staff member deactivated successfully and active logins terminated.' });
   } catch (err) {
     next(err);
@@ -749,6 +752,8 @@ const bulkImportStaff = async (req, res, next) => {
 
     // Clean up temporary uploaded spreadsheet file
     if (fs.existsSync(req.file.path)) fs.unlinkSync(req.file.path);
+
+    if (typeof clearDashboardCache === 'function') clearDashboardCache();
 
     res.status(200).json({
       success: true,

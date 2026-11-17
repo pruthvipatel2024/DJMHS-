@@ -10,6 +10,7 @@ router.get('/', authorizeRoles('ADMIN', 'TEACHER', 'STUDENT', 'PARENT'), examCon
 router.post('/', authorizeRoles('ADMIN'), examController.createExam);
 router.get('/marksheet', authorizeRoles('ADMIN', 'TEACHER'), examController.getMarkSheet);
 router.post('/marks', authorizeRoles('ADMIN', 'TEACHER'), examController.submitMarks);
+router.get('/results', authorizeRoles('ADMIN', 'TEACHER', 'STUDENT', 'PARENT'), examController.getStudentResult);
 router.get('/report-card/pdf', authorizeRoles('ADMIN', 'TEACHER', 'STUDENT', 'PARENT'), examController.downloadReportCardPdf);
 
 module.exports = router;

@@ -40,9 +40,9 @@ const getAdminDashboardKPIs = async (req, res, next) => {
       recentPayments,
       recentAttendanceLogs,
     ] = await Promise.all([
-      prisma.student.count({ where: { status: 'ACTIVE' } }),
-      prisma.staff.count(),
-      prisma.division.count(),
+      prisma.student.count({ where: { status: 'ACTIVE', deletedAt: null } }),
+      prisma.staff.count({ where: { deletedAt: null } }),
+      prisma.division.count({ where: { deletedAt: null } }),
       prisma.studentAttendance.count({ where: { date: { gte: today }, status: 'PRESENT' } }),
       prisma.studentAttendance.count({ where: { date: { gte: today } } }),
       prisma.feePayment.aggregate({ _sum: { amount: true } }),
@@ -51,7 +51,8 @@ const getAdminDashboardKPIs = async (req, res, next) => {
         _sum: { amount: true },
       }),
       prisma.department.findMany({
-        include: { _count: { select: { staffMembers: true } } },
+        where: { deletedAt: null },
+        include: { _count: { select: { staffMembers: { where: { deletedAt: null } } } } },
       }),
       prisma.auditLog.findMany({
         take: 6,
@@ -152,12 +153,12 @@ const getTeacherDashboard = async (req, res, next) => {
     let staffId = req.user.staffProfile?.id;
 
     if (!staffId && req.user?.id) {
-      const staffRecord = await prisma.staff.findFirst({ where: { userId: req.user.id } });
+      const staffRecord = await prisma.staff.findFirst({ where: { userId: req.user.id, deletedAt: null } });
       if (staffRecord) staffId = staffRecord.id;
     }
 
     if (!staffId) {
-      const firstStaff = await prisma.staff.findFirst({ include: { department: true } });
+      const firstStaff = await prisma.staff.findFirst({ where: { deletedAt: null }, include: { department: true } });
       if (firstStaff) staffId = firstStaff.id;
     }
 

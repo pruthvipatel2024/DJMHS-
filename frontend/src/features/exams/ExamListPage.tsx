@@ -3,6 +3,7 @@ import { Plus, BookOpenCheck, Calendar, Award, FileText, ArrowRight } from 'luci
 import DataTable, { Column } from '../../components/DataTable/DataTable';
 import ExamService from '../../services/exam.service';
 import ReportCardModal from './ReportCardModal';
+import ScheduleExamModal from './ScheduleExamModal';
 import { useNavigate } from 'react-router-dom';
 import LoadingSkeleton from '../../components/States/LoadingSkeleton';
 import { useTranslation } from 'react-i18next';
@@ -13,19 +14,22 @@ const ExamListPage: React.FC = () => {
   const [exams, setExams] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedExamForReport, setSelectedExamForReport] = useState<any | null>(null);
+  const [isScheduleModalOpen, setIsScheduleModalOpen] = useState(false);
+  const [toastMsg, setToastMsg] = useState<string | null>(null);
+
+  const fetchExams = async () => {
+    setLoading(true);
+    try {
+      const data = await ExamService.getExams();
+      setExams(data);
+    } catch (e) {
+      setExams([]);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   useEffect(() => {
-    const fetchExams = async () => {
-      setLoading(true);
-      try {
-        const data = await ExamService.getExams();
-        setExams(data);
-      } catch (e) {
-        setExams([]);
-      } finally {
-        setLoading(false);
-      }
-    };
     fetchExams();
   }, []);
 
@@ -99,12 +103,19 @@ const ExamListPage: React.FC = () => {
         </div>
 
         <button
-          onClick={() => alert('Opening Exam Term Configuration Modal...')}
-          className="px-5 py-2.5 rounded-xl bg-primary-600 hover:bg-primary-700 text-white font-bold text-xs shadow-md shadow-primary-600/30 transition flex items-center gap-2 self-end sm:self-auto"
+          onClick={() => setIsScheduleModalOpen(true)}
+          className="px-5 py-2.5 rounded-xl bg-primary-600 hover:bg-primary-700 text-white font-bold text-xs shadow-md shadow-primary-600/30 transition flex items-center gap-2 self-end sm:self-auto cursor-pointer"
         >
           <Plus className="w-4 h-4" /> {t('schedule_exam_session')}
         </button>
       </div>
+
+      {toastMsg && (
+        <div className="p-4 rounded-xl bg-emerald-50 border border-emerald-300 text-emerald-900 text-xs font-bold flex items-center gap-2 shadow-sm animate-in fade-in duration-200">
+          <BookOpenCheck className="w-4 h-4 text-emerald-600 flex-shrink-0" />
+          <span>{toastMsg}</span>
+        </div>
+      )}
 
       <DataTable
         title={t('active_examinations_title')}
@@ -113,6 +124,18 @@ const ExamListPage: React.FC = () => {
         columns={columns}
         searchPlaceholder={t('search_exam_placeholder')}
       />
+
+      {isScheduleModalOpen && (
+        <ScheduleExamModal
+          isOpen={isScheduleModalOpen}
+          onClose={() => setIsScheduleModalOpen(false)}
+          onSuccess={(examName) => {
+            fetchExams();
+            setToastMsg(`Examination session '${examName}' successfully scheduled and published to evaluation console.`);
+            setTimeout(() => setToastMsg(null), 5000);
+          }}
+        />
+      )}
 
       {selectedExamForReport && (
         <ReportCardModal

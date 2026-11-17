@@ -98,37 +98,97 @@ const setTimetableSlot = async (req, res, next) => {
       }
     }
 
-    // Teacher Clash Detection (PRD Chapter 7)
-    const existingClash = await prisma.timetable.findFirst({
+    // Check if a timetable slot already exists for this division at this time slot
+    const existingDivisionSlot = await prisma.timetable.findFirst({
+      where: {
+        divisionId,
+        dayOfWeek: cleanDay,
+        periodNumber: cleanPeriod,
+      },
+    });
+
+    const targetId = id || existingDivisionSlot?.id;
+
+    // Teacher Clash Detection: Check if designated faculty member is already teaching ANY other class at this time
+    const teacherClash = await prisma.timetable.findFirst({
       where: {
         staffId,
         dayOfWeek: cleanDay,
         periodNumber: cleanPeriod,
-        id: id ? { not: id } : undefined,
+        ...(targetId ? { id: { not: targetId } } : {}),
       },
-      include: { division: { include: { standard: true } }, subject: true },
+      include: {
+        division: { include: { standard: true } },
+        subject: true,
+        staff: true,
+      },
     });
 
-    if (existingClash) {
-      const clashDiv = `${existingClash.division.standard.name} (Division ${existingClash.division.name})`;
+    if (teacherClash) {
+      const teacherName = `${teacherClash.staff?.firstName || 'Faculty'} ${teacherClash.staff?.lastName || ''}`.trim();
+      const clashClass = `${teacherClash.division?.standard?.name || 'Class'} (Division ${teacherClash.division?.name || 'A'})`;
       return res.status(409).json({
         success: false,
         error: 'Teacher Schedule Clash',
-        message: `System Alert: Designated teacher is already assigned to teach '${existingClash.subject.name}' in ${clashDiv} on ${cleanDay} Period ${cleanPeriod}.`,
+        message: `Teacher Conflict: Faculty member ${teacherName} is already assigned to teach '${teacherClash.subject?.name || 'Subject'}' in ${clashClass} on ${cleanDay} Period ${cleanPeriod}. A single teacher cannot be scheduled in two classes at the same time.`,
       });
     }
 
+    // Room Clash Detection: Check if the room/lab is already occupied by another class
+    if (roomNumber && roomNumber !== 'Classroom' && roomNumber.trim() !== '') {
+      const roomClash = await prisma.timetable.findFirst({
+        where: {
+          roomNumber: { equals: roomNumber.trim(), mode: 'insensitive' },
+          dayOfWeek: cleanDay,
+          periodNumber: cleanPeriod,
+          ...(targetId ? { id: { not: targetId } } : {}),
+        },
+        include: {
+          division: { include: { standard: true } },
+          subject: true,
+        },
+      });
+
+      if (roomClash) {
+        const clashClass = `${roomClash.division?.standard?.name || 'Class'} (Division ${roomClash.division?.name || 'A'})`;
+        return res.status(409).json({
+          success: false,
+          error: 'Room Schedule Clash',
+          message: `Room Conflict: Classroom / Laboratory '${roomNumber}' is already occupied by ${clashClass} on ${cleanDay} Period ${cleanPeriod}.`,
+        });
+      }
+    }
+
     let slot;
-    if (id) {
+    if (targetId) {
       slot = await prisma.timetable.update({
-        where: { id },
-        data: { divisionId, subjectId: resolvedSubjectId, staffId, dayOfWeek: cleanDay, periodNumber: cleanPeriod, startTime: startTime || '08:00 AM', endTime: endTime || '08:45 AM', roomNumber },
-        include: { subject: true, staff: true },
+        where: { id: targetId },
+        data: {
+          divisionId,
+          subjectId: resolvedSubjectId,
+          staffId,
+          dayOfWeek: cleanDay,
+          periodNumber: cleanPeriod,
+          startTime: startTime || '08:00 AM',
+          endTime: endTime || '08:45 AM',
+          roomNumber: roomNumber || null,
+        },
+        include: { subject: true, staff: true, division: { include: { standard: true } } },
       });
     } else {
       slot = await prisma.timetable.create({
-        data: { divisionId, subjectId: resolvedSubjectId, staffId, academicYearId: yearId, dayOfWeek: cleanDay, periodNumber: cleanPeriod, startTime: startTime || '08:00 AM', endTime: endTime || '08:45 AM', roomNumber },
-        include: { subject: true, staff: true },
+        data: {
+          divisionId,
+          subjectId: resolvedSubjectId,
+          staffId,
+          academicYearId: yearId,
+          dayOfWeek: cleanDay,
+          periodNumber: cleanPeriod,
+          startTime: startTime || '08:00 AM',
+          endTime: endTime || '08:45 AM',
+          roomNumber: roomNumber || null,
+        },
+        include: { subject: true, staff: true, division: { include: { standard: true } } },
       });
     }
 

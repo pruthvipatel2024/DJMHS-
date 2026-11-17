@@ -43,6 +43,7 @@ const generateTimetableDraft = async (params = {}) => {
   });
 
   const staffMembers = await prisma.staff.findMany({
+    where: { deletedAt: null },
     include: { department: true },
   });
 
