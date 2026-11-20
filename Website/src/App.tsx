@@ -6,7 +6,6 @@ import { Introduction } from './components/Introduction';
 import { AboutSection } from './components/AboutSection';
 import { AcademicsSection } from './components/AcademicsSection';
 import { CampusLife } from './components/CampusLife';
-import { ActivitiesSection } from './components/ActivitiesSection';
 import { AchievementsSection } from './components/AchievementsSection';
 import { NewsSection } from './components/NewsSection';
 import { GallerySection } from './components/GallerySection';
@@ -57,10 +56,7 @@ export const App: React.FC = () => {
         {/* 6. Campus Life (Bento Photo Grid) */}
         <CampusLife t={t} />
 
-        {/* 7. Activities & Student Life */}
-        <ActivitiesSection t={t} />
-
-        {/* 8. Achievements Showcase */}
+        {/* 7. Achievements Showcase */}
         <AchievementsSection t={t} />
 
         {/* 9. News & Events */}

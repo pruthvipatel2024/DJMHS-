@@ -9,10 +9,10 @@ interface SharedJourneyProps {
 
 export const SharedJourney: React.FC<SharedJourneyProps> = ({ t, onOpenEnquire }) => {
   const socialImages = [
-    { src: '/images/school_photo_7.jpg', caption: 'Campus Courtyard' },
-    { src: '/images/school_photo_2.jpg', caption: 'Morning School Routine' },
-    { src: '/images/school_photo_3.jpg', caption: 'Traditional Cultural Fest' },
-    { src: '/images/school_photo_4.jpg', caption: 'Sports Meet' },
+    { src: '/images/DJMS-Function-5.jpeg', caption: 'Campus Courtyard' },
+    { src: '/images/DJMS-Student.jpeg', caption: 'Morning School Routine' },
+    { src: '/images/DJMS-Function-2.jpeg', caption: 'Traditional Cultural Fest' },
+    { src: '/images/Campus-3.jpg', caption: 'Campus-3' },
   ];
 
   return (

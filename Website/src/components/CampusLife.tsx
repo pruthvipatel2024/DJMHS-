@@ -32,8 +32,8 @@ export const CampusLife: React.FC<CampusLifeProps> = ({ t }) => {
           {/* Large Left Card: Campus Exterior & Grounds */}
           <div className="lg:col-span-7 relative group rounded-2xl overflow-hidden shadow-lg h-[340px] sm:h-[480px] bg-slate-900">
             <img
-              src="/images/school_photo_7.jpg"
-              alt="School Campus and Courtyard"
+              src="/images/campus-1.jpg"
+              alt="Campus-1"
               className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-700"
             />
             <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent" />
@@ -49,8 +49,8 @@ export const CampusLife: React.FC<CampusLifeProps> = ({ t }) => {
             {/* Top Right: Library & Knowledge Hub */}
             <div className="relative group rounded-2xl overflow-hidden shadow-lg h-[230px] bg-slate-900">
               <img
-                src="/images/school_photo_5.jpg"
-                alt="School Library and Reading Room"
+                src="/images/DJMS-Class_room.jpeg"
+                alt="DJMS-Class_room"
                 className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-700"
               />
               <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent" />
@@ -64,8 +64,8 @@ export const CampusLife: React.FC<CampusLifeProps> = ({ t }) => {
             {/* Bottom Right: Classroom & Science Labs */}
             <div className="relative group rounded-2xl overflow-hidden shadow-lg h-[230px] bg-slate-900">
               <img
-                src="/images/school_photo_6.jpg"
-                alt="Classroom and Interactive Learning"
+                src="/images/DJMS-Yoga_day.jpeg"
+                alt="DJMS-Yoga_day"
                 className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-700"
               />
               <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent" />

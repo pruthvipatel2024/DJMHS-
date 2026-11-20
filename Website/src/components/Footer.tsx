@@ -68,11 +68,6 @@ export const Footer: React.FC<FooterProps> = ({ t }) => {
                 </a>
               </li>
               <li>
-                <a href="#activities" className="hover:text-white transition-colors">
-                  {t.nav.activities}
-                </a>
-              </li>
-              <li>
                 <a href="#achievements" className="hover:text-white transition-colors">
                   {t.nav.achievements}
                 </a>

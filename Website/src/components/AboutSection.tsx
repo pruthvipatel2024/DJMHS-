@@ -33,10 +33,10 @@ export const AboutSection: React.FC<AboutSectionProps> = ({ t }) => {
           {t.about.pillars.map((pillar, idx) => {
             // Pick appropriate images
             const images = [
-              '/images/school_photo_1.jpg',
-              '/images/school_photo_3.jpg',
-              '/images/school_photo_5.jpg',
-              '/images/school_photo_7.jpg',
+              '/images/DJMS-Class_room.jpeg',
+              '/images/DJMS-Function-2.jpeg',
+              '/images/DJMS-Parents-2.jpeg',
+              '/images/DJMS-Function-5.jpeg',
             ];
             const displayImg = images[idx] || pillar.image;
 

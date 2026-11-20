@@ -16,7 +16,7 @@ export const Introduction: React.FC<IntroductionProps> = ({ t }) => {
           <div className="lg:col-span-5 relative">
             <div className="relative rounded-2xl overflow-hidden shadow-xl border border-slate-200/80 bg-slate-100 group">
               <img
-                src="/images/school_photo_2.jpg"
+                src="/images/DJMS-Student.jpeg"
                 alt="Students at Shree Dhaneshkumar Jasvantlal Maheta High School"
                 className="w-full h-[420px] sm:h-[480px] object-cover object-center group-hover:scale-105 transition-transform duration-700"
               />

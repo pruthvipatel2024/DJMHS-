@@ -25,7 +25,6 @@ export const Navbar: React.FC<NavbarProps> = ({ lang, setLang, t, onOpenEnquire 
     { label: t.nav.about, href: '#about' },
     { label: t.nav.academics, href: '#academics' },
     { label: t.nav.campusLife, href: '#campus' },
-    { label: t.nav.activities, href: '#activities' },
     { label: t.nav.achievements, href: '#achievements' },
     { label: t.nav.gallery, href: '#gallery' },
     { label: t.nav.newsEvents, href: '#news' },
